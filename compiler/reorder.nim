@@ -408,7 +408,8 @@ proc strongConnect(v: var DepN, idx: var int, s: var seq[DepN],
 proc getStrongComponents(g: var DepG): seq[seq[DepN]] =
   ## Tarjan's algorithm. Performs a topological sort
   ## and detects strongly connected components.
-  var s: seq[DepN]
+  result = @[]
+  var s: seq[DepN] = @[]
   var idx = 0
   for v in g.mitems:
     if v.idx < 0:

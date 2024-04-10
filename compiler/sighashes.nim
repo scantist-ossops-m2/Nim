@@ -260,7 +260,8 @@ when defined(debugSigHashes):
   # (select hash from sighashes group by hash having count(*) > 1) order by hash;
 
 proc hashType*(t: PType; conf: ConfigRef; flags: set[ConsiderFlag] = {CoType}): SigHash =
-  var c: MD5Context
+  result = default(SigHash)
+  var c: MD5Context = default(MD5Context)
   md5Init c
   hashType c, t, flags+{CoOwnerSig}, conf
   md5Final c, result.MD5Digest
@@ -269,7 +270,8 @@ proc hashType*(t: PType; conf: ConfigRef; flags: set[ConsiderFlag] = {CoType}): 
             typeToString(t), $result)
 
 proc hashProc(s: PSym; conf: ConfigRef): SigHash =
-  var c: MD5Context
+  result = default(SigHash)
+  var c: MD5Context = default(MD5Context)
   md5Init c
   hashType c, s.typ, {CoProc}, conf
 
@@ -289,7 +291,8 @@ proc hashProc(s: PSym; conf: ConfigRef): SigHash =
   md5Final c, result.MD5Digest
 
 proc hashNonProc*(s: PSym): SigHash =
-  var c: MD5Context
+  result = default(SigHash)
+  var c: MD5Context = default(MD5Context)
   md5Init c
   hashSym(c, s)
   var it = s
@@ -305,7 +308,8 @@ proc hashNonProc*(s: PSym): SigHash =
   md5Final c, result.MD5Digest
 
 proc hashOwner*(s: PSym): SigHash =
-  var c: MD5Context
+  result = default(SigHash)
+  var c: MD5Context = default(MD5Context)
   md5Init c
   var m = s
   while m.kind != skModule: m = m.owner
@@ -378,7 +382,7 @@ proc symBodyDigest*(graph: ModuleGraph, sym: PSym): SigHash =
   graph.symBodyHashes.withValue(sym.id, value):
     return value[]
 
-  var c: MD5Context
+  var c: MD5Context = default(MD5Context)
   md5Init(c)
   c.hashType(sym.typ, {CoProc}, graph.config)
   c &= char(sym.kind)

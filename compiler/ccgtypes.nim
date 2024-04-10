@@ -760,7 +760,7 @@ proc getRecordFields(m: BModule; typ: PType, check: var IntSet): Rope =
       genMemberProcHeader(m, prc, header, false, true)
       result.addf "$1;$n", [header]
     if isCtorGen and not isDefaultCtorGen:
-      var ch: IntSet
+      var ch: IntSet = default(IntSet)
       result.addf "$1() = default;$n", [getTypeDescAux(m, typ, ch, dkOther)]
     
 proc fillObjectFields*(m: BModule; typ: PType) =
@@ -1594,7 +1594,7 @@ proc generateRttiDestructor(g: ModuleGraph; typ: PType; owner: PSym; kind: TType
     ))
     )
   else:
-    let addrOf = newNodeIT(nkAddr, info, theProc.typ[1])
+    let addrOf = newNodeIT(nkHiddenAddr, info, theProc.typ[1])
     addrOf.add newDeref(newTreeIT(
       nkCast, info, castType, newNodeIT(nkType, info, castType),
       newSymNode(dest)

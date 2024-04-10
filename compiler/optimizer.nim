@@ -279,8 +279,8 @@ proc optimize*(n: PNode): PNode =
 
     Now assume 'use' raises, then we shouldn't do the 'wasMoved(s)'
   ]#
-  var c: Con
-  var b: BasicBlock
+  var c: Con = Con()
+  var b: BasicBlock = default(BasicBlock)
   analyse(c, b, n)
   if c.somethingTodo:
     result = shallowCopy(n)
