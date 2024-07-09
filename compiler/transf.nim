@@ -53,6 +53,7 @@ type
     isIntroducingNewLocalVars: bool  # true if we are in `introducingNewLocalVars` (don't transform yields)
     contSyms, breakSyms: seq[PSym]  # to transform 'continue' and 'break'
     deferDetected, tooEarly: bool
+    inAddr: bool
     graph: ModuleGraph
     idgen: IdGenerator
 
@@ -1038,7 +1039,10 @@ proc transform(c: PTransf, n: PNode): PNode =
   of nkHiddenAddr:
     result = transformAddrDeref(c, n, {nkHiddenDeref})
   of nkAddr:
+    let oldInAddr = c.inAddr
+    c.inAddr = true
     result = transformAddrDeref(c, n, {nkDerefExpr, nkHiddenDeref})
+    c.inAddr = oldInAddr
   of nkDerefExpr:
     result = transformAddrDeref(c, n, {nkAddr, nkHiddenAddr})
   of nkHiddenDeref:
@@ -1118,7 +1122,7 @@ proc transform(c: PTransf, n: PNode): PNode =
   let exprIsPointerCast = n.kind in {nkCast, nkConv, nkHiddenStdConv} and
                           n.typ != nil and
                           n.typ.kind == tyPointer
-  if not exprIsPointerCast:
+  if not exprIsPointerCast and not c.inAddr:
     var cnst = getConstExpr(c.module, result, c.idgen, c.graph)
     # we inline constants if they are not complex constants:
     if cnst != nil and not dontInlineConstant(n, cnst):
