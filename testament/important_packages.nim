@@ -60,7 +60,6 @@ pkg "confutils", "nimble install -y toml_serialization json_serialization unitte
 pkg "constantine", "nimble make_lib"
 pkg "criterion"
 pkg "dashing", "nim c tests/functional.nim"
-pkg "datamancer", url = "https://github.com/nim-lang/Datamancer"
 pkg "delaunay"
 pkg "docopt"
 pkg "dotenv"
