@@ -12,7 +12,6 @@ when not defined(leanCompiler):
 
 import std/[syncio, objectdollar, assertions, tables, strutils, strtabs]
 import renderer
-import ic/replayer
 
 proc setPipeLinePass*(graph: ModuleGraph; pass: PipelinePass) =
   graph.pipelinePass = pass
@@ -251,11 +250,6 @@ proc compilePipelineModule*(graph: ModuleGraph; fileIdx: FileIndex; flags: TSymF
       partialInitModule(result, graph, fileIdx, filename)
     for m in cachedModules:
       registerModuleById(graph, m)
-      if sfMainModule in flags and graph.config.cmd == cmdM:
-        discard
-      else:
-        replayStateChanges(graph.packed.pm[m.int].module, graph)
-        replayGenericCacheInformation(graph, m.int)
   elif graph.isDirty(result):
     result.flags.excl sfDirty
     # reset module fields:

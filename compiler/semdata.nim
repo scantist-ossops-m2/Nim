@@ -18,8 +18,6 @@ import
   options, ast, msgs, idents, renderer,
   magicsys, vmdef, modulegraphs, lineinfos, pathutils, layeredtable
 
-import ic / ic
-
 type
   TOptionEntry* = object      # entries to put on a stack for pragma parsing
     options*: TOptions
@@ -327,28 +325,6 @@ proc newContext*(graph: ModuleGraph; module: PSym): PContext =
   result.graph = graph
   result.signatures = initStrTable()
   result.features = graph.config.features
-  if graph.config.symbolFiles != disabledSf:
-    let id = module.position
-    if graph.config.cmd != cmdM:
-      assert graph.packed[id].status in {undefined, outdated}
-    graph.packed[id].status = storing
-    graph.packed[id].module = module
-    initEncoder graph, module
-
-template packedRepr*(c): untyped = c.graph.packed[c.module.position].fromDisk
-template encoder*(c): untyped = c.graph.encoders[c.module.position]
-
-proc addIncludeFileDep*(c: PContext; f: FileIndex) =
-  if c.config.symbolFiles != disabledSf:
-    addIncludeFileDep(c.encoder, c.packedRepr, f)
-
-proc addImportFileDep*(c: PContext; f: FileIndex) =
-  if c.config.symbolFiles != disabledSf:
-    addImportFileDep(c.encoder, c.packedRepr, f)
-
-proc addPragmaComputation*(c: PContext; n: PNode) =
-  if c.config.symbolFiles != disabledSf:
-    addPragmaComputation(c.encoder, c.packedRepr, n)
 
 proc inclSym(sq: var seq[PSym], s: PSym): bool =
   for i in 0..<sq.len:
@@ -363,31 +339,21 @@ proc addConverter*(c: PContext, conv: LazySym) =
 
 proc addConverterDef*(c: PContext, conv: LazySym) =
   addConverter(c, conv)
-  if c.config.symbolFiles != disabledSf:
-    addConverter(c.encoder, c.packedRepr, conv.sym)
 
 proc addPureEnum*(c: PContext, e: LazySym) =
   assert e.sym != nil
   add(c.graph.ifaces[c.module.position].pureEnums, e)
-  if c.config.symbolFiles != disabledSf:
-    addPureEnum(c.encoder, c.packedRepr, e.sym)
 
 proc addPattern*(c: PContext, p: LazySym) =
   assert p.sym != nil
   if inclSym(c.patterns, p.sym):
     add(c.graph.ifaces[c.module.position].patterns, p)
-  if c.config.symbolFiles != disabledSf:
-    addTrmacro(c.encoder, c.packedRepr, p.sym)
 
 proc exportSym*(c: PContext; s: PSym) =
   strTableAdds(c.graph, c.module, s)
-  if c.config.symbolFiles != disabledSf:
-    addExported(c.encoder, c.packedRepr, s)
 
 proc reexportSym*(c: PContext; s: PSym) =
   strTableAdds(c.graph, c.module, s)
-  if c.config.symbolFiles != disabledSf:
-    addReexport(c.encoder, c.packedRepr, s)
 
 proc newLib*(kind: TLibKind): PLib =
   new(result)
@@ -603,34 +569,8 @@ template addExport*(c: PContext; s: PSym) =
   ## convenience to export a symbol from the current module
   addExport(c.graph, c.module, s)
 
-proc storeRodNode*(c: PContext, n: PNode) =
-  if c.config.symbolFiles != disabledSf:
-    toPackedNodeTopLevel(n, c.encoder, c.packedRepr)
-
 proc addToGenericProcCache*(c: PContext; s: PSym; inst: PInstantiation) =
   c.graph.procInstCache.mgetOrPut(s.itemId, @[]).add LazyInstantiation(module: c.module.position, inst: inst)
-  if c.config.symbolFiles != disabledSf:
-    storeInstantiation(c.encoder, c.packedRepr, s, inst)
 
 proc addToGenericCache*(c: PContext; s: PSym; inst: PType) =
   c.graph.typeInstCache.mgetOrPut(s.itemId, @[]).add LazyType(typ: inst)
-  if c.config.symbolFiles != disabledSf:
-    storeTypeInst(c.encoder, c.packedRepr, s, inst)
-
-proc sealRodFile*(c: PContext) =
-  if c.config.symbolFiles != disabledSf:
-    if c.graph.vm != nil:
-      for (m, n) in PCtx(c.graph.vm).vmstateDiff:
-        if m == c.module:
-          addPragmaComputation(c, n)
-    c.idgen.sealed = true # no further additions are allowed
-
-proc rememberExpansion*(c: PContext; info: TLineInfo; expandedSym: PSym) =
-  ## Templates and macros are very special in Nim; these have
-  ## inlining semantics so after semantic checking they leave no trace
-  ## in the sem'checked AST. This is very bad for IDE-like tooling
-  ## ("find all usages of this template" would not work). We need special
-  ## logic to remember macro/template expansions. This is done here and
-  ## delegated to the "rod" file mechanism.
-  if c.config.symbolFiles != disabledSf:
-    storeExpansion(c.encoder, c.packedRepr, info, expandedSym)

@@ -505,7 +505,6 @@ const
 
 proc semMacroExpr(c: PContext, n, nOrig: PNode, sym: PSym,
                   flags: TExprFlags = {}; expectedType: PType = nil): PNode =
-  rememberExpansion(c, nOrig.info, sym)
   pushInfoContext(c.config, nOrig.info, sym.detailedInfo)
 
   let info = getCallLineInfo(n)
@@ -848,7 +847,6 @@ proc semWithPContext*(c: PContext, n: PNode): PNode =
       else:
         result = newNodeI(nkEmpty, n.info)
       #if c.config.cmd == cmdIdeTools: findSuggest(c, n)
-  storeRodNode(c, result)
 
 
 proc reportUnusedModules(c: PContext) =
@@ -871,4 +869,3 @@ proc closePContext*(graph: ModuleGraph; c: PContext, n: PNode): PNode =
     result.add(c.module.ast)
   popOwner(c)
   popProcCon(c)
-  sealRodFile(c)

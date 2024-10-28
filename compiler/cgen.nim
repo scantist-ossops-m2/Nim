@@ -30,7 +30,6 @@ when not defined(leanCompiler):
 
 import std/strutils except `%`, addf # collides with ropes.`%`
 
-from ic / ic import ModuleBackendFlag
 import std/[dynlib, math, tables, sets, os, intsets, hashes]
 
 const
@@ -1366,8 +1365,7 @@ proc genProcNoForward(m: BModule, prc: PSym) =
       #if prc.loc.k == locNone:
       # mangle the inline proc based on the module where it is defined -
       # not on the first module that uses it
-      let m2 = if m.config.symbolFiles != disabledSf: m
-               else: findPendingModule(m, prc)
+      let m2 = findPendingModule(m, prc)
       fillProcLoc(m2, prc.ast[namePos])
       #elif {sfExportc, sfImportc} * prc.flags == {}:
       #  # reset name to restore consistency in case of hashing collisions:
@@ -1719,33 +1717,6 @@ proc genMainProc(m: BModule) =
     if m.config.cppCustomNamespace.len > 0:
       openNamespaceNim(m.config.cppCustomNamespace, m.s[cfsProcs])
 
-proc registerInitProcs*(g: BModuleList; m: PSym; flags: set[ModuleBackendFlag]) =
-  ## Called from the IC backend.
-  if HasDatInitProc in flags:
-    let datInit = getSomeNameForModule(g.config, g.config.toFullPath(m.info.fileIndex).AbsoluteFile) & "DatInit000"
-    g.mainModProcs.addf("N_LIB_PRIVATE N_NIMCALL(void, $1)(void);$N", [datInit])
-    g.mainDatInit.addf("\t$1();$N", [datInit])
-  if HasModuleInitProc in flags:
-    let init = getSomeNameForModule(g.config, g.config.toFullPath(m.info.fileIndex).AbsoluteFile) & "Init000"
-    g.mainModProcs.addf("N_LIB_PRIVATE N_NIMCALL(void, $1)(void);$N", [init])
-    let initCall = "\t$1();$N" % [init]
-    if sfMainModule in m.flags:
-      g.mainModInit.add(initCall)
-    elif sfSystemModule in m.flags:
-      g.mainDatInit.add(initCall) # systemInit must called right after systemDatInit if any
-    else:
-      g.otherModsInit.add(initCall)
-
-proc whichInitProcs*(m: BModule): set[ModuleBackendFlag] =
-  # called from IC.
-  result = {}
-  if m.hcrOn or m.preInitProc.s(cpsInit).len > 0 or m.preInitProc.s(cpsStmts).len > 0:
-    result.incl HasModuleInitProc
-  for i in cfsTypeInit1..cfsDynLibInit:
-    if m.s[i].len != 0:
-      result.incl HasDatInitProc
-      break
-
 proc registerModuleToMain(g: BModuleList; m: BModule) =
   let
     init = m.getInitName
@@ -1840,7 +1811,6 @@ proc genDatInitCode(m: BModule) =
 
   if moduleDatInitRequired:
     m.s[cfsDatInitProc].add(prc)
-    #rememberFlag(m.g.graph, m.module, HasDatInitProc)
 
 # Very similar to the contents of symInDynamicLib - basically only the
 # things needed for the hot code reloading runtime procs to be loaded
@@ -1971,7 +1941,6 @@ proc genInitCode(m: BModule) =
 
   if moduleInitRequired or sfMainModule in m.module.flags:
     m.s[cfsInitProc].add(prc)
-    #rememberFlag(m.g.graph, m.module, HasModuleInitProc)
 
   genDatInitCode(m)
 
@@ -2234,7 +2203,7 @@ proc writeModule(m: BModule, pending: bool) =
   var cf = Cfile(nimname: m.module.name.s, cname: cfile,
                   obj: completeCfilePath(m.config, toObjFile(m.config, cfile)), flags: {})
   var code = genModule(m, cf)
-  if code != "" or m.config.symbolFiles != disabledSf:
+  if code != "":
     when hasTinyCBackend:
       if m.config.cmd == cmdTcc:
         tccgen.compileCCode($code, m.config)

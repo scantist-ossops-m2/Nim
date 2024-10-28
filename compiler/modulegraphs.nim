@@ -224,13 +224,6 @@ proc simulateCachedModule(g: ModuleGraph; moduleSym: PSym; m: PackedModule) =
     echo "simulating ", moduleSym.name.s, " ", moduleSym.position
   simulateLoadedModule(g.packed, g.config, g.cache, moduleSym, m)
 
-proc initEncoder*(g: ModuleGraph; module: PSym) =
-  let id = module.position
-  if id >= g.encoders.len:
-    setLen g.encoders, id+1
-  ic.initEncoder(g.encoders[id],
-    g.packed[id].fromDisk, module, g.config, g.startupPackedConfig)
-
 type
   ModuleIter* = object
     fromRod: bool
@@ -365,13 +358,6 @@ proc setAttachedOpPartial*(g: ModuleGraph; module: int; t: PType; op: TTypeAttac
   ## we also need to record this to the packed module.
   g.attachedOps[op][t.itemId] = LazySym(sym: value)
 
-proc completePartialOp*(g: ModuleGraph; module: int; t: PType; op: TTypeAttachedOp; value: PSym) =
-  if g.config.symbolFiles != disabledSf:
-    assert module < g.encoders.len
-    assert isActive(g.encoders[module])
-    toPackedGeneratedProcDef(value, g.encoders[module], g.packed[module].fromDisk)
-    #storeAttachedProcDef(t, op, value, g.encoders[module], g.packed[module].fromDisk)
-
 iterator getDispatchers*(g: ModuleGraph): PSym =
   for i in g.dispatchers.mitems:
     yield resolveSym(g, i)
@@ -417,20 +403,6 @@ proc copyTypeProps*(g: ModuleGraph; module: int; dest, src: PType) =
     let op = getAttachedOp(g, src, k)
     if op != nil:
       setAttachedOp(g, module, dest, k, op)
-
-proc loadCompilerProc*(g: ModuleGraph; name: string): PSym =
-  result = nil
-  if g.config.symbolFiles == disabledSf: return nil
-
-  # slow, linear search, but the results are cached:
-  for module in 0..<len(g.packed):
-    #if isCachedModule(g, module):
-    let x = searchForCompilerproc(g.packed[module], name)
-    if x >= 0:
-      result = loadSymFromId(g.config, g.cache, g.packed, module, toPackedItemId(x))
-      if result != nil:
-        strTableAdd(g.compilerprocs, result)
-      return result
 
 proc loadPackedSym*(g: ModuleGraph; s: var LazySym) =
   if s.sym == nil:
@@ -606,24 +578,7 @@ proc getModule*(g: ModuleGraph; fileIdx: FileIndex): PSym =
       result = g.ifaces[fileIdx.int32].module
 
 proc moduleOpenForCodegen*(g: ModuleGraph; m: FileIndex): bool {.inline.} =
-  if g.config.symbolFiles == disabledSf:
-    result = true
-  else:
-    result = g.packed[m.int32].status notin {undefined, stored, loaded}
-
-proc rememberEmittedTypeInfo*(g: ModuleGraph; m: FileIndex; ti: string) =
-  #assert(not isCachedModule(g, m.int32))
-  if g.config.symbolFiles != disabledSf:
-    #assert g.encoders[m.int32].isActive
-    assert g.packed[m.int32].status != stored
-    g.packed[m.int32].fromDisk.emittedTypeInfo.add ti
-    #echo "added typeinfo ", m.int32, " ", ti, " suspicious ", not g.encoders[m.int32].isActive
-
-proc rememberFlag*(g: ModuleGraph; m: PSym; flag: ModuleBackendFlag) =
-  if g.config.symbolFiles != disabledSf:
-    #assert g.encoders[m.int32].isActive
-    assert g.packed[m.position].status != stored
-    g.packed[m.position].fromDisk.backendFlags.incl flag
+  result = true
 
 proc closeRodFile*(g: ModuleGraph; m: PSym) =
   if g.config.symbolFiles in {readOnlySf, v2Sf}:

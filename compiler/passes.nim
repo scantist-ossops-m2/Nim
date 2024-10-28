@@ -19,7 +19,6 @@ import
   modules, pathutils, packages,
   sem, semdata
 
-import ic/replayer
 
 export skipCodegen, resolveMod, prepareConfigNotes
 
@@ -185,8 +184,6 @@ proc compileModule*(graph: ModuleGraph; fileIdx: FileIndex; flags: TSymFlags, fr
       partialInitModule(result, graph, fileIdx, filename)
     for m in cachedModules:
       registerModuleById(graph, m)
-      replayStateChanges(graph.packed.pm[m.int].module, graph)
-      replayGenericCacheInformation(graph, m.int)
   elif graph.isDirty(result):
     result.flags.excl sfDirty
     # reset module fields:
