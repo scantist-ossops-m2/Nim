@@ -332,21 +332,21 @@ proc inclSym(sq: var seq[PSym], s: PSym): bool =
   sq.add s
   result = true
 
-proc addConverter*(c: PContext, conv: LazySym) =
-  assert conv.sym != nil
-  if inclSym(c.converters, conv.sym):
+proc addConverter*(c: PContext, conv: PSym) =
+  assert conv != nil
+  if inclSym(c.converters, conv):
     add(c.graph.ifaces[c.module.position].converters, conv)
 
-proc addConverterDef*(c: PContext, conv: LazySym) =
+proc addConverterDef*(c: PContext, conv: PSym) =
   addConverter(c, conv)
 
-proc addPureEnum*(c: PContext, e: LazySym) =
-  assert e.sym != nil
+proc addPureEnum*(c: PContext, e: PSym) =
+  assert e != nil
   add(c.graph.ifaces[c.module.position].pureEnums, e)
 
-proc addPattern*(c: PContext, p: LazySym) =
-  assert p.sym != nil
-  if inclSym(c.patterns, p.sym):
+proc addPattern*(c: PContext, p: PSym) =
+  assert p != nil
+  if inclSym(c.patterns, p):
     add(c.graph.ifaces[c.module.position].patterns, p)
 
 proc exportSym*(c: PContext; s: PSym) =
@@ -570,7 +570,7 @@ template addExport*(c: PContext; s: PSym) =
   addExport(c.graph, c.module, s)
 
 proc addToGenericProcCache*(c: PContext; s: PSym; inst: PInstantiation) =
-  c.graph.procInstCache.mgetOrPut(s.itemId, @[]).add LazyInstantiation(module: c.module.position, inst: inst)
+  c.graph.procInstCache.mgetOrPut(s.itemId, @[]).add inst
 
 proc addToGenericCache*(c: PContext; s: PSym; inst: PType) =
-  c.graph.typeInstCache.mgetOrPut(s.itemId, @[]).add LazyType(typ: inst)
+  c.graph.typeInstCache.mgetOrPut(s.itemId, @[]).add inst

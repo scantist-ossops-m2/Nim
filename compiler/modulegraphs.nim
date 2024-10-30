@@ -14,8 +14,6 @@
 import std/[intsets, tables, hashes, strtabs, algorithm, os, strutils, parseutils]
 import ../dist/checksums/src/checksums/md5
 import ast, astalgo, options, lineinfos,idents, btrees, ropes, msgs, pathutils, packages, suggestsymdb
-import ic / [packed_ast, ic]
-
 
 when defined(nimPreviewSlimSystem):
   import std/assertions
@@ -23,16 +21,12 @@ when defined(nimPreviewSlimSystem):
 type
   SigHash* = distinct MD5Digest
 
-  LazySym* = object
-    id*: FullId
-    sym*: PSym
-
   Iface* = object       ## data we don't want to store directly in the
                         ## ast.PSym type for s.kind == skModule
     module*: PSym       ## module this "Iface" belongs to
-    converters*: seq[LazySym]
-    patterns*: seq[LazySym]
-    pureEnums*: seq[LazySym]
+    converters*: seq[PSym]
+    patterns*: seq[PSym]
+    pureEnums*: seq[PSym]
     interf: TStrTable
     interfHidden: TStrTable
     uniqueName*: Rope
@@ -40,20 +34,6 @@ type
   Operators* = object
     opNot*, opContains*, opLe*, opLt*, opAnd*, opOr*, opIsNil*, opEq*: PSym
     opAdd*, opSub*, opMul*, opDiv*, opLen*: PSym
-
-  FullId* = object
-    module*: int
-    packed*: PackedItemId
-
-  LazyType* = object
-    id*: FullId
-    typ*: PType
-
-  LazyInstantiation* = object
-    module*: int
-    sym*: FullId
-    concreteTypes*: seq[FullId]
-    inst*: PInstantiation
 
   PipelinePass* = enum
     NonePass
@@ -69,15 +49,13 @@ type
 
   ModuleGraph* {.acyclic.} = ref object
     ifaces*: seq[Iface]  ## indexed by int32 fileIdx
-    packed*: PackedModuleGraph
-
-    typeInstCache*: Table[ItemId, seq[LazyType]] # A symbol's ItemId.
-    procInstCache*: Table[ItemId, seq[LazyInstantiation]] # A symbol's ItemId.
-    attachedOps*: array[TTypeAttachedOp, Table[ItemId, LazySym]] # Type ID, destructors, etc.
-    methodsPerGenericType*: Table[ItemId, seq[(int, LazySym)]] # Type ID, attached methods
+    typeInstCache*: Table[ItemId, seq[PType]] # A symbol's ItemId.
+    procInstCache*: Table[ItemId, seq[PInstantiation]] # A symbol's ItemId.
+    attachedOps*: array[TTypeAttachedOp, Table[ItemId, PSym]] # Type ID, destructors, etc.
+    methodsPerGenericType*: Table[ItemId, seq[(int, PSym)]] # Type ID, attached methods
     memberProcsPerType*: Table[ItemId, seq[PSym]] # Type ID, attached member procs (only c++, virtual,member and ctor so far).
     initializersPerType*: Table[ItemId, PNode] # Type ID, AST call to the default ctor (c++ only)
-    enumToStringProcs*: Table[ItemId, LazySym]
+    enumToStringProcs*: Table[ItemId, PSym]
     emittedTypeInfo*: Table[string, FileIndex]
 
     packageSyms*: TStrTable
@@ -105,8 +83,8 @@ type
     methods*: seq[tuple[methods: seq[PSym], dispatcher: PSym]] # needs serialization!
     bucketTable*: CountTable[ItemId]
     objectTree*: Table[ItemId, seq[tuple[depth: int, value: PType]]]
-    methodsPerType*: Table[ItemId, seq[LazySym]]
-    dispatchers*: seq[LazySym]
+    methodsPerType*: Table[ItemId, seq[PSym]]
+    dispatchers*: seq[PSym]
 
     systemModule*: PSym
     sysTypes*: array[TTypeKind, PType]
@@ -254,86 +232,60 @@ iterator systemModuleSyms*(g: ModuleGraph; name: PIdent): PSym =
     yield r
     r = nextModuleIter(mi, g)
 
-proc resolveType(g: ModuleGraph; t: var LazyType): PType =
-  result = t.typ
-  assert result != nil
-
-proc resolveSym(g: ModuleGraph; t: var LazySym): PSym =
-  result = t.sym
-  assert result != nil
-
-proc resolveInst(g: ModuleGraph; t: var LazyInstantiation): PInstantiation =
-  result = t.inst
-  assert result != nil
-
-proc resolveAttachedOp*(g: ModuleGraph; t: var LazySym): PSym =
-  result = t.sym
-  assert result != nil
-
 iterator typeInstCacheItems*(g: ModuleGraph; s: PSym): PType =
   if g.typeInstCache.contains(s.itemId):
     let x = addr(g.typeInstCache[s.itemId])
     for t in mitems(x[]):
-      yield resolveType(g, t)
+      yield t
 
 iterator procInstCacheItems*(g: ModuleGraph; s: PSym): PInstantiation =
   if g.procInstCache.contains(s.itemId):
     let x = addr(g.procInstCache[s.itemId])
     for t in mitems(x[]):
-      yield resolveInst(g, t)
-
+      yield t
 
 proc getAttachedOp*(g: ModuleGraph; t: PType; op: TTypeAttachedOp): PSym =
   ## returns the requested attached operation for type `t`. Can return nil
   ## if no such operation exists.
   if g.attachedOps[op].contains(t.itemId):
-    result = resolveAttachedOp(g, g.attachedOps[op][t.itemId])
+    result = g.attachedOps[op][t.itemId]
   else:
     result = nil
 
 proc setAttachedOp*(g: ModuleGraph; module: int; t: PType; op: TTypeAttachedOp; value: PSym) =
-  ## we also need to record this to the packed module.
-  g.attachedOps[op][t.itemId] = LazySym(sym: value)
+  g.attachedOps[op][t.itemId] = value
 
 proc setAttachedOpPartial*(g: ModuleGraph; module: int; t: PType; op: TTypeAttachedOp; value: PSym) =
-  ## we also need to record this to the packed module.
-  g.attachedOps[op][t.itemId] = LazySym(sym: value)
+  g.attachedOps[op][t.itemId] = value
 
 iterator getDispatchers*(g: ModuleGraph): PSym =
   for i in g.dispatchers.mitems:
-    yield resolveSym(g, i)
+    yield i
 
 proc addDispatchers*(g: ModuleGraph, value: PSym) =
-  # TODO: add it for packed modules
-  g.dispatchers.add LazySym(sym: value)
+  g.dispatchers.add value
 
-iterator resolveLazySymSeq(g: ModuleGraph, list: var seq[LazySym]): PSym =
-  for it in list.mitems:
-    yield resolveSym(g, it)
-
-proc setMethodsPerType*(g: ModuleGraph; id: ItemId, methods: seq[LazySym]) =
-  # TODO: add it for packed modules
+proc setMethodsPerType*(g: ModuleGraph; id: ItemId, methods: seq[PSym]) =
   g.methodsPerType[id] = methods
 
 iterator getMethodsPerType*(g: ModuleGraph; t: PType): PSym =
   if g.methodsPerType.contains(t.itemId):
     for it in mitems g.methodsPerType[t.itemId]:
-      yield resolveSym(g, it)
+      yield it
 
 proc getToStringProc*(g: ModuleGraph; t: PType): PSym =
-  result = resolveSym(g, g.enumToStringProcs[t.itemId])
-  assert result != nil
+  result = g.enumToStringProcs[t.itemId]
 
 proc setToStringProc*(g: ModuleGraph; t: PType; value: PSym) =
-  g.enumToStringProcs[t.itemId] = LazySym(sym: value)
+  g.enumToStringProcs[t.itemId] = value
 
 iterator methodsForGeneric*(g: ModuleGraph; t: PType): (int, PSym) =
   if g.methodsPerGenericType.contains(t.itemId):
     for it in mitems g.methodsPerGenericType[t.itemId]:
-      yield (it[0], resolveSym(g, it[1]))
+      yield (it[0], it[1])
 
 proc addMethodToGeneric*(g: ModuleGraph; module: int; t: PType; col: int; m: PSym) =
-  g.methodsPerGenericType.mgetOrPut(t.itemId, @[]).add (col, LazySym(sym: m))
+  g.methodsPerGenericType.mgetOrPut(t.itemId, @[]).add (col,  m)
 
 proc hasDisabledAsgn*(g: ModuleGraph; t: PType): bool =
   let op = getAttachedOp(g, t, attachedAsgn)
@@ -344,10 +296,6 @@ proc copyTypeProps*(g: ModuleGraph; module: int; dest, src: PType) =
     let op = getAttachedOp(g, src, k)
     if op != nil:
       setAttachedOp(g, module, dest, k, op)
-
-proc loadPackedSym*(g: ModuleGraph; s: var LazySym) =
-  if s.sym == nil:
-    s.sym = loadSymFromId(g.config, g.cache, g.packed, s.id.module, s.id.packed)
 
 proc `$`*(u: SigHash): string =
   toBase64a(cast[cstring](unsafeAddr u), sizeof(u))
@@ -435,15 +383,9 @@ proc registerModule*(g: ModuleGraph; m: PSym) =
   if m.position >= g.ifaces.len:
     setLen(g.ifaces, m.position + 1)
 
-  if m.position >= g.packed.len:
-    setLen(g.packed.pm, m.position + 1)
-
   g.ifaces[m.position] = Iface(module: m, converters: @[], patterns: @[],
                                uniqueName: rope(uniqueModuleName(g.config, m)))
   initStrTables(g, m)
-
-proc registerModuleById*(g: ModuleGraph; m: FileIndex) =
-  registerModule(g, g.packed[int m].module)
 
 proc initOperators*(g: ModuleGraph): Operators =
   # These are safe for IC.
@@ -601,7 +543,6 @@ proc needsCompilation*(g: ModuleGraph, fileIdx: FileIndex): bool =
 
 proc getBody*(g: ModuleGraph; s: PSym): PNode {.inline.} =
   result = s.ast[bodyPos]
-  assert result != nil
 
 proc onProcessing*(graph: ModuleGraph, fileIdx: FileIndex, moduleStatus: string, fromModule: PSym, ) =
   let conf = graph.config
