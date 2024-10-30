@@ -147,11 +147,6 @@ proc processModule*(graph: ModuleGraph; module: PSym; idgen: IdGenerator;
     closeParser(p)
     if s.kind != llsStdIn: break
   closePasses(graph, a)
-  if graph.config.backend notin {backendC, backendCpp, backendObjc}:
-    # We only write rod files here if no C-like backend is active.
-    # The C-like backends have been patched to support the IC mechanism.
-    # They are responsible for closing the rod files. See `cbackend.nim`.
-    closeRodFile(graph, module)
   result = true
 
 proc compileModule*(graph: ModuleGraph; fileIdx: FileIndex; flags: TSymFlags, fromModule: PSym = nil): PSym =
@@ -167,20 +162,11 @@ proc compileModule*(graph: ModuleGraph; fileIdx: FileIndex; flags: TSymFlags, fr
       elif graph.config.projectIsCmd: s = llStreamOpen(graph.config.cmdInput)
     discard processModule(graph, result, idGeneratorFromModule(result), s)
   if result == nil:
-    var cachedModules: seq[FileIndex] = @[]
-    result = moduleFromRodFile(graph, fileIdx, cachedModules)
     let filename = AbsoluteFile toFullPath(graph.config, fileIdx)
-    if result == nil:
-      result = newModule(graph, fileIdx)
-      result.flags.incl flags
-      registerModule(graph, result)
-      processModuleAux("import")
-    else:
-      if sfSystemModule in flags:
-        graph.systemModule = result
-      partialInitModule(result, graph, fileIdx, filename)
-    for m in cachedModules:
-      registerModuleById(graph, m)
+    result = newModule(graph, fileIdx)
+    result.flags.incl flags
+    registerModule(graph, result)
+    processModuleAux("import")
   elif graph.isDirty(result):
     result.flags.excl sfDirty
     # reset module fields:
@@ -219,7 +205,6 @@ proc compileProject*(graph: ModuleGraph; projectFileIdx = InvalidFileIdx) =
   connectCallbacks(graph)
   let conf = graph.config
   wantMainModule(conf)
-  configComplete(graph)
 
   let systemFileIdx = fileInfoIdx(conf, conf.libpath / RelativeFile"system.nim")
   let projectFile = if projectFileIdx == InvalidFileIdx: conf.projectMainIdx else: projectFileIdx

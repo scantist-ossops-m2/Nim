@@ -322,7 +322,6 @@ proc myImportModule(c: PContext, n: var PNode, importStmtResult: PNode): PSym =
     result = nil
 
 proc afterImport(c: PContext, m: PSym) =
-  if isCachedModule(c.graph, m): return
   # fixes bug #17510, for re-exported symbols
   let realModuleId = c.importModuleMap[m.id]
   for s in allSyms(c.graph, m):

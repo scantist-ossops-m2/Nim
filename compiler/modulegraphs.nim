@@ -70,7 +70,6 @@ type
   ModuleGraph* {.acyclic.} = ref object
     ifaces*: seq[Iface]  ## indexed by int32 fileIdx
     packed*: PackedModuleGraph
-    encoders*: seq[PackedEncoder]
 
     typeInstCache*: Table[ItemId, seq[LazyType]] # A symbol's ItemId.
     procInstCache*: Table[ItemId, seq[LazyInstantiation]] # A symbol's ItemId.
@@ -81,7 +80,6 @@ type
     enumToStringProcs*: Table[ItemId, LazySym]
     emittedTypeInfo*: Table[string, FileIndex]
 
-    startupPackedConfig*: PackedConfig
     packageSyms*: TStrTable
     deps*: IntSet # the dependency graph or potentially its transitive closure.
     importDeps*: Table[FileIndex, seq[FileIndex]] # explicit import module dependencies
@@ -213,79 +211,38 @@ proc strTableAdds*(g: ModuleGraph, m: PSym, s: PSym) =
   strTableAdd(semtab(g, m), s)
   strTableAdd(semtabAll(g, m), s)
 
-proc isCachedModule(g: ModuleGraph; module: int): bool {.inline.} =
-  result = module < g.packed.len and g.packed[module].status == loaded
-
-proc isCachedModule*(g: ModuleGraph; m: PSym): bool {.inline.} =
-  isCachedModule(g, m.position)
-
-proc simulateCachedModule(g: ModuleGraph; moduleSym: PSym; m: PackedModule) =
-  when false:
-    echo "simulating ", moduleSym.name.s, " ", moduleSym.position
-  simulateLoadedModule(g.packed, g.config, g.cache, moduleSym, m)
-
 type
   ModuleIter* = object
-    fromRod: bool
     modIndex: int
     ti: TIdentIter
-    rodIt: RodIter
     importHidden: bool
 
 proc initModuleIter*(mi: var ModuleIter; g: ModuleGraph; m: PSym; name: PIdent): PSym =
   assert m.kind == skModule
   mi.modIndex = m.position
-  mi.fromRod = isCachedModule(g, mi.modIndex)
   mi.importHidden = optImportHidden in m.options
-  if mi.fromRod:
-    result = initRodIter(mi.rodIt, g.config, g.cache, g.packed, FileIndex mi.modIndex, name, mi.importHidden)
-  else:
-    result = initIdentIter(mi.ti, g.ifaces[mi.modIndex].interfSelect(mi.importHidden), name)
+  result = initIdentIter(mi.ti, g.ifaces[mi.modIndex].interfSelect(mi.importHidden), name)
 
 proc nextModuleIter*(mi: var ModuleIter; g: ModuleGraph): PSym =
-  if mi.fromRod:
-    result = nextRodIter(mi.rodIt, g.packed)
-  else:
-    result = nextIdentIter(mi.ti, g.ifaces[mi.modIndex].interfSelect(mi.importHidden))
+  result = nextIdentIter(mi.ti, g.ifaces[mi.modIndex].interfSelect(mi.importHidden))
 
 iterator allSyms*(g: ModuleGraph; m: PSym): PSym =
   let importHidden = optImportHidden in m.options
-  if isCachedModule(g, m):
-    var rodIt: RodIter = default(RodIter)
-    var r = initRodIterAllSyms(rodIt, g.config, g.cache, g.packed, FileIndex m.position, importHidden)
-    while r != nil:
-      yield r
-      r = nextRodIter(rodIt, g.packed)
-  else:
-    for s in g.ifaces[m.position].interfSelect(importHidden).data:
-      if s != nil:
-        yield s
+  for s in g.ifaces[m.position].interfSelect(importHidden).data:
+    if s != nil:
+      yield s
 
 proc someSym*(g: ModuleGraph; m: PSym; name: PIdent): PSym =
   let importHidden = optImportHidden in m.options
-  if isCachedModule(g, m):
-    result = interfaceSymbol(g.config, g.cache, g.packed, FileIndex(m.position), name, importHidden)
-  else:
-    result = strTableGet(g.ifaces[m.position].interfSelect(importHidden), name)
+  result = strTableGet(g.ifaces[m.position].interfSelect(importHidden), name)
 
 proc someSymAmb*(g: ModuleGraph; m: PSym; name: PIdent; amb: var bool): PSym =
   let importHidden = optImportHidden in m.options
-  if isCachedModule(g, m):
-    result = nil
-    for s in interfaceSymbols(g.config, g.cache, g.packed, FileIndex(m.position), name, importHidden):
-      if result == nil:
-        # set result to the first symbol
-        result = s
-      else:
-        # another symbol found
-        amb = true
-        break
-  else:
-    var ti: TIdentIter = default(TIdentIter)
-    result = initIdentIter(ti, g.ifaces[m.position].interfSelect(importHidden), name)
-    if result != nil and nextIdentIter(ti, g.ifaces[m.position].interfSelect(importHidden)) != nil:
-      # another symbol exists with same name
-      amb = true
+  var ti: TIdentIter = default(TIdentIter)
+  result = initIdentIter(ti, g.ifaces[m.position].interfSelect(importHidden), name)
+  if result != nil and nextIdentIter(ti, g.ifaces[m.position].interfSelect(importHidden)) != nil:
+    # another symbol exists with same name
+    amb = true
 
 proc systemModuleSym*(g: ModuleGraph; name: PIdent): PSym =
   result = someSym(g, g.systemModule, name)
@@ -299,34 +256,18 @@ iterator systemModuleSyms*(g: ModuleGraph; name: PIdent): PSym =
 
 proc resolveType(g: ModuleGraph; t: var LazyType): PType =
   result = t.typ
-  if result == nil and isCachedModule(g, t.id.module):
-    result = loadTypeFromId(g.config, g.cache, g.packed, t.id.module, t.id.packed)
-    t.typ = result
   assert result != nil
 
 proc resolveSym(g: ModuleGraph; t: var LazySym): PSym =
   result = t.sym
-  if result == nil and isCachedModule(g, t.id.module):
-    result = loadSymFromId(g.config, g.cache, g.packed, t.id.module, t.id.packed)
-    t.sym = result
   assert result != nil
 
 proc resolveInst(g: ModuleGraph; t: var LazyInstantiation): PInstantiation =
   result = t.inst
-  if result == nil and isCachedModule(g, t.module):
-    result = PInstantiation(sym: loadSymFromId(g.config, g.cache, g.packed, t.sym.module, t.sym.packed))
-    result.concreteTypes = newSeq[PType](t.concreteTypes.len)
-    for i in 0..high(result.concreteTypes):
-      result.concreteTypes[i] = loadTypeFromId(g.config, g.cache, g.packed,
-          t.concreteTypes[i].module, t.concreteTypes[i].packed)
-    t.inst = result
   assert result != nil
 
 proc resolveAttachedOp*(g: ModuleGraph; t: var LazySym): PSym =
   result = t.sym
-  if result == nil:
-    result = loadSymFromId(g.config, g.cache, g.packed, t.id.module, t.id.packed)
-    t.sym = result
   assert result != nil
 
 iterator typeInstCacheItems*(g: ModuleGraph; s: PSym): PType =
@@ -570,32 +511,13 @@ proc resetAllModules*(g: ModuleGraph) =
   initModuleGraphFields(g)
 
 proc getModule*(g: ModuleGraph; fileIdx: FileIndex): PSym =
-  result = nil
-  if fileIdx.int32 >= 0:
-    if isCachedModule(g, fileIdx.int32):
-      result = g.packed[fileIdx.int32].module
-    elif fileIdx.int32 < g.ifaces.len:
-      result = g.ifaces[fileIdx.int32].module
+  if fileIdx.int32 >= 0 and fileIdx.int32 < g.ifaces.len:
+    result = g.ifaces[fileIdx.int32].module
+  else:
+    result = nil
 
 proc moduleOpenForCodegen*(g: ModuleGraph; m: FileIndex): bool {.inline.} =
   result = true
-
-proc closeRodFile*(g: ModuleGraph; m: PSym) =
-  if g.config.symbolFiles in {readOnlySf, v2Sf}:
-    # For stress testing we seek to reload the symbols from memory. This
-    # way much of the logic is tested but the test is reproducible as it does
-    # not depend on the hard disk contents!
-    let mint = m.position
-    saveRodFile(toRodFile(g.config, AbsoluteFile toFullPath(g.config, FileIndex(mint))),
-                g.encoders[mint], g.packed[mint].fromDisk)
-    g.packed[mint].status = stored
-
-  elif g.config.symbolFiles == stressTest:
-    # debug code, but maybe a good idea for production? Could reduce the compiler's
-    # memory consumption considerably at the cost of more loads from disk.
-    let mint = m.position
-    simulateCachedModule(g, m, g.packed[mint].fromDisk)
-    g.packed[mint].status = loaded
 
 proc dependsOn(a, b: int): int {.inline.} = (a shl 15) + b
 
@@ -679,21 +601,7 @@ proc needsCompilation*(g: ModuleGraph, fileIdx: FileIndex): bool =
 
 proc getBody*(g: ModuleGraph; s: PSym): PNode {.inline.} =
   result = s.ast[bodyPos]
-  if result == nil and g.config.symbolFiles in {readOnlySf, v2Sf, stressTest}:
-    result = loadProcBody(g.config, g.cache, g.packed, s)
-    s.ast[bodyPos] = result
   assert result != nil
-
-proc moduleFromRodFile*(g: ModuleGraph; fileIdx: FileIndex;
-                        cachedModules: var seq[FileIndex]): PSym =
-  ## Returns 'nil' if the module needs to be recompiled.
-  if g.config.symbolFiles in {readOnlySf, v2Sf, stressTest}:
-    result = moduleFromRodFile(g.packed, g.config, g.cache, fileIdx, cachedModules)
-  else:
-    result = nil
-
-proc configComplete*(g: ModuleGraph) =
-  rememberStartupConfig(g.startupPackedConfig, g.config)
 
 proc onProcessing*(graph: ModuleGraph, fileIdx: FileIndex, moduleStatus: string, fromModule: PSym, ) =
   let conf = graph.config
