@@ -190,7 +190,7 @@ proc strTableAdds*(g: ModuleGraph, m: PSym, s: PSym) =
   strTableAdd(semtabAll(g, m), s)
 
 template selectTabs*(g: ModuleGraph; m: PSym): TStrTable =
-  g.ifaces[m.position].interfSelect(optImportHidden in m.options)
+  interfSelect(g.ifaces[m.position], optImportHidden in m.options)
 
 iterator allSyms*(g: ModuleGraph; m: PSym): PSym =
   let importHidden = optImportHidden in m.options
