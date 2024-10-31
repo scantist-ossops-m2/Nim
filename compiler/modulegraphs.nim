@@ -11,7 +11,7 @@
 ## represents a complete Nim project. Single modules can either be kept in RAM
 ## or stored in a rod-file.
 
-import std/[intsets, tables, hashes, strtabs, algorithm, os, strutils, parseutils]
+import std/[intsets, tables, hashes, strtabs, os, strutils, parseutils]
 import ../dist/checksums/src/checksums/md5
 import ast, astalgo, options, lineinfos,idents, btrees, ropes, msgs, pathutils, packages, suggestsymdb
 
@@ -189,20 +189,8 @@ proc strTableAdds*(g: ModuleGraph, m: PSym, s: PSym) =
   strTableAdd(semtab(g, m), s)
   strTableAdd(semtabAll(g, m), s)
 
-type
-  ModuleIter* = object
-    modIndex: int
-    ti: TIdentIter
-    importHidden: bool
-
-proc initModuleIter*(mi: var ModuleIter; g: ModuleGraph; m: PSym; name: PIdent): PSym =
-  assert m.kind == skModule
-  mi.modIndex = m.position
-  mi.importHidden = optImportHidden in m.options
-  result = initIdentIter(mi.ti, g.ifaces[mi.modIndex].interfSelect(mi.importHidden), name)
-
-proc nextModuleIter*(mi: var ModuleIter; g: ModuleGraph): PSym =
-  result = nextIdentIter(mi.ti, g.ifaces[mi.modIndex].interfSelect(mi.importHidden))
+template selectTabs*(g: ModuleGraph; m: PSym): TStrTable =
+  g.ifaces[m.position].interfSelect(optImportHidden in m.options)
 
 iterator allSyms*(g: ModuleGraph; m: PSym): PSym =
   let importHidden = optImportHidden in m.options
@@ -226,11 +214,11 @@ proc systemModuleSym*(g: ModuleGraph; name: PIdent): PSym =
   result = someSym(g, g.systemModule, name)
 
 iterator systemModuleSyms*(g: ModuleGraph; name: PIdent): PSym =
-  var mi: ModuleIter = default(ModuleIter)
-  var r = initModuleIter(mi, g, g.systemModule, name)
+  var ti: TIdentIter = default(TIdentIter)
+  var r = initIdentIter(ti, selectTabs(g, g.systemModule), name)
   while r != nil:
     yield r
-    r = nextModuleIter(mi, g)
+    r = nextIdentIter(ti, selectTabs(g, g.systemModule))
 
 iterator typeInstCacheItems*(g: ModuleGraph; s: PSym): PType =
   if g.typeInstCache.contains(s.itemId):

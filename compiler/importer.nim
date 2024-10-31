@@ -144,13 +144,13 @@ proc importSymbol(c: PContext, n: PNode, fromMod: PSym; importSet: var IntSet) =
     # for an enumeration we have to add all identifiers
     if multiImport:
       # for a overloadable syms add all overloaded routines
-      var it: ModuleIter = default(ModuleIter)
-      var e = initModuleIter(it, c.graph, fromMod, s.name)
+      var it: TIdentIter = default(TIdentIter)
+      var e = initIdentIter(it, selectTabs(c.graph, fromMod), s.name)
       while e != nil:
         if e.name.id != s.name.id: internalError(c.config, n.info, "importSymbol: 3")
         if s.kind in ExportableSymKinds:
           rawImportSymbol(c, e, fromMod, importSet)
-        e = nextModuleIter(it, c.graph)
+        e = nextIdentIter(it, selectTabs(c.graph, fromMod))
     else:
       rawImportSymbol(c, s, fromMod, importSet)
     suggestSym(c.graph, n.info, s, c.graph.usageSym, false)
