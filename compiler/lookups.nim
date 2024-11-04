@@ -563,23 +563,33 @@ proc errorUseQualifier*(c: PContext; info: TLineInfo; s: PSym) =
   var amb: bool = false
   discard errorUseQualifier(c, info, s, amb)
 
-proc errorUseQualifier*(c: PContext; info: TLineInfo; candidates: seq[PSym]; prefix = "use one of") =
-  var err = "ambiguous identifier: '" & candidates[0].name.s & "'"
+proc ambiguousIdentifierMsg*(candidates: seq[PSym], prefix = "use one of", indent = 0): string =
+  result = ""
+  for i in 0 ..< indent:
+    result.add(' ')
+  result.add "ambiguous identifier: '" & candidates[0].name.s & "'"
   var i = 0
   for candidate in candidates:
-    if i == 0: err.add " -- $1 the following:\n" % prefix
-    else: err.add "\n"
-    err.add "  " & candidate.owner.name.s & "." & candidate.name.s
-    err.add ": " & typeToString(candidate.typ)
+    if i == 0: result.add " -- $1 the following:\n" % prefix
+    else: result.add "\n"
+    for i in 0 ..< indent:
+      result.add(' ')
+    result.add "  " & candidate.owner.name.s & "." & candidate.name.s
+    result.add ": " & typeToString(candidate.typ)
     inc i
-  localError(c.config, info, errGenerated, err)
 
-proc errorUseQualifier*(c: PContext; info:TLineInfo; choices: PNode) =
+proc errorUseQualifier*(c: PContext; info: TLineInfo; candidates: seq[PSym]) =
+  localError(c.config, info, errGenerated, ambiguousIdentifierMsg(candidates))
+
+proc ambiguousIdentifierMsg*(choices: PNode, indent = 0): string =
   var candidates = newSeq[PSym](choices.len)
   let prefix = if choices[0].typ.kind != tyProc: "use one of" else: "you need a helper proc to disambiguate"
   for i, n in choices:
     candidates[i] = n.sym
-  errorUseQualifier(c, info, candidates, prefix)
+  result = ambiguousIdentifierMsg(candidates, prefix, indent)
+
+proc errorUseQualifier*(c: PContext; info:TLineInfo; choices: PNode) =
+  localError(c.config, info, errGenerated, ambiguousIdentifierMsg(choices))
 
 proc errorUndeclaredIdentifier*(c: PContext; info: TLineInfo; name: string, extra = "") =
   var err: string
@@ -675,10 +685,12 @@ proc qualifiedLookUp*(c: PContext, n: PNode, flags: set[TLookupFlag]): PSym =
     var m = qualifiedLookUp(c, n[0], (flags * {checkUndeclared}) + {checkModule})
     if m != nil and m.kind == skModule:
       var ident: PIdent = nil
-      if n[1].kind == nkIdent:
-        ident = n[1].ident
-      elif n[1].kind == nkAccQuoted:
+      if n[1].kind == nkAccQuoted:
         ident = considerQuotedIdent(c, n[1])
+      else:
+        # this includes sym and symchoice nodes, but since we are looking in
+        # a module, it shouldn't matter what was captured
+        ident = n[1].getPIdent
       if ident != nil:
         if m == c.module:
           var ti: TIdentIter = default(TIdentIter)

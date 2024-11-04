@@ -209,8 +209,7 @@ proc genOpenArraySlice(p: BProc; q: PNode; formalType, destType: PType; prepareF
       result = ("($3*)(($1)+($2))" % [rdLoc(a), rdLoc(b), dest],
                 lengthExpr)
     else:
-      var lit = newRopeAppender()
-      intLiteral(first, lit)
+      let lit = cIntLiteral(first)
       result = ("($4*)($1)+(($2)-($3))" %
         [rdLoc(a), rdLoc(b), lit, dest],
         lengthExpr)
@@ -336,7 +335,7 @@ proc genArg(p: BProc, n: PNode, param: PSym; call: PNode; result: var Rope; need
     # variable. Thus, we create a temporary pointer variable instead.
     let needsIndirect = mapType(p.config, n[0].typ, mapTypeChooser(n[0]) == skParam) != ctArray
     if needsIndirect:
-      n.typ = n.typ.exactReplica
+      n.typ() = n.typ.exactReplica
       n.typ.flags.incl tfVarIsPtr
     a = initLocExprSingleUse(p, n)
     a = withTmpIfNeeded(p, a, needsTmp)

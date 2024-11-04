@@ -820,3 +820,44 @@ block: # bug #23973
     doAssert t == a
 
   n()
+
+block: # bug #24141
+  func reverse(s: var openArray[char]) =
+    s[0] = 'f'
+
+  func rev(s: var string) =
+    s.reverse
+
+  proc main =
+    var abc = "abc"
+    abc.rev
+    doAssert abc == "fbc"
+
+  main()
+
+block:
+  type
+    FooObj = object
+      data: int
+    Foo = ref FooObj
+
+
+  proc delete(self: FooObj) =
+    discard
+
+  var s = Foo()
+  new(s, delete)
+
+block:
+  type
+    FooObj = object
+      data: int
+      i1, i2, i3, i4: float
+    Foo = ref FooObj
+
+
+  proc delete(self: FooObj) =
+    discard
+
+  var s = Foo()
+  new(s, delete)
