@@ -272,7 +272,7 @@ proc initRegex(pattern: string, flags: csize_t, options: uint32): Regex =
     errorCode: cint = 0
     errOffset: csize_t = 0
 
-  result.pcreObj = pcre2.compile(cast[ptr uint8](cstring(pattern)),
+  result.pcreObj = pcre2.compile(cstring(pattern),
                                 flags, options, addr(errorCode),
                                 addr(errOffset), nil)
   if result.pcreObj == nil:
@@ -508,7 +508,7 @@ proc matchImpl(str: string, pattern: Regex, start, endpos: int, options: uint32)
   var matchData = pcre2.match_data_create_from_pattern(pattern.pcreObj, nil)
   defer: pcre2.match_data_free(matchData)
   let execRet = pcre2.match(pattern.pcreObj,
-                          cast[ptr uint8](cstring(str)),
+                          cstring(str),
                           csize_t(strlen),
                           csize_t(start),
                           options,

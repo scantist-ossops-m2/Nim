@@ -533,7 +533,7 @@ else:
 
 # Exported PCRE functions
 
-proc compile*(pattern: ptr uint8,
+proc compile*(pattern: cstring,
               options: csize_t,
               flags: uint32,
               errorCode: ptr cint,
@@ -576,23 +576,12 @@ proc dfa_match*(code: ptr Pcre,
                wscount: cint): cint
 
 proc match*(code: ptr Pcre,
-           subject: ptr uint8,
+           subject: cstring,
            length: csize_t,
            startoffset: csize_t,
            options: uint32,
            ovector: ptr MatchData,
            ovecsize: pointer): cint
-
-proc match*(code: ptr Pcre,
-           subject: cstring,
-           length: cint,
-           startoffset: cint,
-           options: cint,
-           ovector: ptr MatchData,
-           ovecsize: cint): cint =
-  result = match(code, cast[ptr uint8](subject), csize_t length, csize_t startoffset,
-          uint32 options, 
-          ovector, nil)
 
 proc match_data_create*(size: uint32, ctx: ptr GeneralContext): ptr MatchData
 

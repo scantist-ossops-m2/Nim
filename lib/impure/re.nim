@@ -83,7 +83,7 @@ proc rawCompile(pattern: string, flags: csize_t, options: uint32): ptr Pcre =
   var
     errorCode: cint = 0
     offset: csize_t = 0
-  result = pcre2.compile(cast[ptr uint8](pattern.cstring), flags, options, addr(errorCode), addr(offset), nil)
+  result = pcre2.compile(pattern.cstring, flags, options, addr(errorCode), addr(offset), nil)
   if result == nil:
     raiseInvalidRegex($errorCode & "\n" & pattern & "\n" & spaces(offset) & "^\n")
 
@@ -146,7 +146,7 @@ proc matchOrFind(buf: cstring, pattern: Regex, matches: var openArray[string],
     rawMatches = rtarray.getRawData
   var matchData = match_data_create_from_pattern(pattern.h, nil)
   defer: match_data_free(matchData)
-  var res = pcre2.match(pattern.h, cast[ptr uint8](buf), bufSize.csize_t, start.csize_t, options,
+  var res = pcre2.match(pattern.h, buf, bufSize.csize_t, start.csize_t, options,
       matchData, nil)
   rawMatches = cast[ptr UncheckedArray[csize_t]](get_ovector_pointer(matchData))
   if res < 0: return res
@@ -177,7 +177,7 @@ proc findBounds*(buf: cstring, pattern: Regex, matches: var openArray[string],
     rawMatches = rtarray.getRawData
   var matchData = match_data_create_from_pattern(pattern.h, nil)
   defer: match_data_free(matchData)
-  var res = pcre2.match(pattern.h, cast[ptr uint8](buf), bufSize.csize_t, start.csize_t, 0'u32,
+  var res = pcre2.match(pattern.h, buf, bufSize.csize_t, start.csize_t, 0'u32,
       matchData, nil)
   rawMatches = cast[ptr UncheckedArray[csize_t]](get_ovector_pointer(matchData))
   if res < 0: return (-1, 0)
@@ -220,7 +220,7 @@ proc findBounds*(buf: cstring, pattern: Regex,
     rawMatches = rtarray.getRawData
   var matchData = match_data_create_from_pattern(pattern.h, nil)
   defer: match_data_free(matchData)
-  var res = pcre2.match(pattern.h, cast[ptr uint8](buf), bufSize.csize_t, start.csize_t, 0'u32,
+  var res = pcre2.match(pattern.h, buf, bufSize.csize_t, start.csize_t, 0'u32,
       matchData, nil)
   rawMatches = cast[ptr UncheckedArray[csize_t]](get_ovector_pointer(matchData))
   if res < 0'i32: return (-1, 0)
@@ -255,7 +255,7 @@ proc findBoundsImpl(buf: cstring, pattern: Regex,
   var rawMatches = rtarray.getRawData
   var matchData = match_data_create_from_pattern(pattern.h, nil)
   defer: match_data_free(matchData)
-  var res = pcre2.match(pattern.h, cast[ptr uint8](buf), bufSize.csize_t, start.csize_t, options,
+  var res = pcre2.match(pattern.h, buf, bufSize.csize_t, start.csize_t, options,
       matchData, nil)
   rawMatches = cast[ptr UncheckedArray[csize_t]](get_ovector_pointer(matchData))
   if res < 0'i32:
@@ -273,7 +273,7 @@ proc findBounds*(buf: cstring, pattern: Regex,
   var rawMatches = rtarray.getRawData
   var matchData = match_data_create_from_pattern(pattern.h, nil)
   defer: match_data_free(matchData)
-  var res = pcre2.match(pattern.h, cast[ptr uint8](buf), bufSize.csize_t, start.csize_t, 0'u32,
+  var res = pcre2.match(pattern.h, buf, bufSize.csize_t, start.csize_t, 0'u32,
       matchData, nil)
   rawMatches = cast[ptr UncheckedArray[csize_t]](get_ovector_pointer(matchData))
   if res < 0'i32: return (int(res), 0)
@@ -296,7 +296,7 @@ proc matchOrFind(buf: cstring, pattern: Regex, start, bufSize: int, options: uin
     rawMatches = rtarray.getRawData
   var matchData = match_data_create_from_pattern(pattern.h, nil)
   defer: match_data_free(matchData)
-  result = pcre2.match(pattern.h, cast[ptr uint8](buf), bufSize.csize_t, start.csize_t, options,
+  result = pcre2.match(pattern.h, buf, bufSize.csize_t, start.csize_t, options,
                     matchData, nil)
   
   rawMatches = cast[ptr UncheckedArray[csize_t]](get_ovector_pointer(matchData))
@@ -381,7 +381,7 @@ proc find*(buf: cstring, pattern: Regex, matches: var openArray[string],
     rawMatches = rtarray.getRawData
   var matchData = match_data_create_from_pattern(pattern.h, nil)
   defer: match_data_free(matchData)
-  var res = pcre2.match(pattern.h, cast[ptr uint8](buf), bufSize.csize_t, start.csize_t, 0'u32,
+  var res = pcre2.match(pattern.h, buf, bufSize.csize_t, start.csize_t, 0'u32,
       matchData, nil)
   rawMatches = cast[ptr UncheckedArray[csize_t]](get_ovector_pointer(matchData))
   if res < 0'i32: return res
@@ -410,7 +410,7 @@ proc find*(buf: cstring, pattern: Regex, start = 0, bufSize: int): int =
     rawMatches = rtarray.getRawData
   var matchData = match_data_create_from_pattern(pattern.h, nil)
   defer: match_data_free(matchData)
-  var res = pcre2.match(pattern.h, cast[ptr uint8](buf), bufSize.csize_t, start.csize_t, 0'u32,
+  var res = pcre2.match(pattern.h, buf, bufSize.csize_t, start.csize_t, 0'u32,
       matchData, nil)
   rawMatches = cast[ptr UncheckedArray[csize_t]](get_ovector_pointer(matchData))
   if res < 0'i32: return res
@@ -441,7 +441,7 @@ iterator findAll*(s: string, pattern: Regex, start = 0): string =
   var matchData = match_data_create_from_pattern(pattern.h, nil)
   defer: match_data_free(matchData)
   while true:
-    let res = pcre2.match(pattern.h, cast[ptr uint8](s.cstring), len(s).csize_t, i.csize_t, 0'u32,
+    let res = pcre2.match(pattern.h, s.cstring, len(s).csize_t, i.csize_t, 0'u32,
       matchData, nil)
     rawMatches = cast[ptr UncheckedArray[csize_t]](get_ovector_pointer(matchData))
     if res < 0'i32: break
@@ -463,7 +463,7 @@ iterator findAll*(buf: cstring, pattern: Regex, start = 0, bufSize: int): string
   var matchData = match_data_create_from_pattern(pattern.h, nil)
   defer: match_data_free(matchData)
   while true:
-    let res = pcre2.match(pattern.h, cast[ptr uint8](buf), bufSize.csize_t, i.csize_t, 0'u32,
+    let res = pcre2.match(pattern.h, buf, bufSize.csize_t, i.csize_t, 0'u32,
       matchData, nil)
     rawMatches = cast[ptr UncheckedArray[csize_t]](get_ovector_pointer(matchData))
     if res < 0'i32: break
