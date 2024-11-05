@@ -231,7 +231,7 @@ when defined(gcDestructors):
 else:
   proc destroyRegex(pattern: Regex) =
     `=destroy`(pattern.pattern)
-    pcre.code_free(pattern.pcreObj)
+    pcre2.code_free(pattern.pcreObj)
     `=destroy`(pattern.captureNameToId)
 
 proc getinfo[T](pattern: Regex, opt: uint32): T =
