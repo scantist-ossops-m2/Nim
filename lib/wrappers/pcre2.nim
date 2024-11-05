@@ -527,7 +527,7 @@ when not defined(usePcreHeader):
     else:
       const pcreDll = "pcre32.dll"
   elif hostOS == "macosx":
-    const pcreDll = "libpcre(.3|.1|).dylib"
+    const pcreDll = "libpcre2-8.0.dylib"
   else:
     const pcreDll = "libpcre2-8.so.0"
   {.push dynlib: pcreDll.}
