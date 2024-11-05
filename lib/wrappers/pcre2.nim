@@ -1,58 +1,19 @@
 #
 #
 #            Nim's Runtime Library
-#        (c) Copyright 2015 Andreas Rumpf
+#        (c) Copyright 2024 Nim Contributors
 #
 #    See the file "copying.txt", included in this
 #    distribution, for details about the copyright.
 #
 
-# The current PCRE version information.
+# The current PCRE2 version information.
 
 const
-  PCRE_MAJOR* = 8
-  PCRE_MINOR* = 36
-  PCRE_PRERELEASE* = true
-  PCRE_DATE* = "2014-09-26"
-
-# When an application links to a PCRE DLL in Windows, the symbols that are
-# imported have to be identified as such. When building PCRE, the appropriate
-# export setting is defined in pcre_internal.h, which includes this file. So we
-# don't change existing definitions of PCRE_EXP_DECL and PCRECPP_EXP_DECL.
-
-# By default, we use the standard "extern" declarations.
-
-# Allow for C++ users
-
-# Public options. Some are compile-time only, some are run-time only, and some
-# are both. Most of the compile-time options are saved with the compiled regex
-# so that they can be inspected during studying (and therefore JIT compiling).
-# Note that pcre_study() has its own set of options. Originally, all the options
-# defined here used distinct bits. However, almost all the bits in a 32-bit word
-# are now used, so in order to conserve them, option bits that were previously
-# only recognized at matching time (i.e. by pcre_exec() or pcre_dfa_exec()) may
-# also be used for compile-time options that affect only compiling and are not
-# relevant for studying or JIT compiling.
-#
-# Some options for pcre_compile() change its behaviour but do not affect the
-# behaviour of the execution functions. Other options are passed through to the
-# execution functions and affect their behaviour, with or without affecting the
-# behaviour of pcre_compile().
-#
-# Options that can be passed to pcre_compile() are tagged Cx below, with these
-# variants:
-#
-# C1   Affects compile only
-# C2   Does not affect compile; affects exec, dfa_exec
-# C3   Affects compile, exec, dfa_exec
-# C4   Affects compile, exec, dfa_exec, study
-# C5   Affects compile, exec, study
-#
-# Options that can be set for pcre_exec() and/or pcre_dfa_exec() are flagged
-# with E and D, respectively. They take precedence over C3, C4, and C5 settings
-# passed from pcre_compile(). Those that are compatible with JIT execution are
-# flagged with J.
-
+  PCRE2_MAJOR* = 10
+  PCRE2_MINOR* = 45
+  PCRE2_PRERELEASE* = true
+  PCRE2_DATE* = "2024-06-09"
 
 const
   ANCHORED* = 0x80000000'u32
@@ -540,40 +501,18 @@ proc compile*(pattern: cstring,
               offset: ptr csize_t,
               tableptr: pointer): ptr Pcre
 
-proc compile2*(pattern: cstring,
-               options: cint,
-               errorcodeptr: ptr cint,
-               errptr: ptr cstring,
-               erroffset: ptr cint,
-               tableptr: pointer): ptr Pcre
-
-proc config*(what: cint,
+proc config*(what: uint32,
              where: pointer): cint
-
-proc copy_named_substring*(code: ptr Pcre,
-                           subject: cstring,
-                           ovector: ptr cint,
-                           stringcount: cint,
-                           stringname: cstring,
-                           buffer: cstring,
-                           buffersize: cint): cint
-
-proc copy_substring*(subject: cstring,
-                     ovector: ptr cint,
-                     stringcount: cint,
-                     stringnumber: cint,
-                     buffer: cstring,
-                     buffersize: cint): cint
 
 proc dfa_match*(code: ptr Pcre,
                subject: cstring,
-               length: cint,
-               startoffset: cint,
-               options: cint,
-               ovector: ptr cint,
-               ovecsize: cint,
+               length: csize_t,
+               startoffset: csize_t,
+               options: uint32,
+               ovector: ptr MatchData,
+               ovecsize: pointer, # TODO: pcre2_match_context
                workspace: ptr cint,
-               wscount: cint): cint
+               wscount: csize_t): cint
 
 proc match*(code: ptr Pcre,
            subject: cstring,
@@ -581,7 +520,8 @@ proc match*(code: ptr Pcre,
            startoffset: csize_t,
            options: uint32,
            ovector: ptr MatchData,
-           ovecsize: pointer): cint
+           ovecsize: pointer # TODO: pcre2_match_context
+           ): cint
 
 proc match_data_create*(size: uint32, ctx: ptr GeneralContext): ptr MatchData
 
@@ -598,16 +538,12 @@ proc get_ovector_count*(ovector: ptr MatchData): uint32
 
 proc jit_match*(code: ptr Pcre,
                subject: cstring,
-               length: cint,
-               startoffset: cint,
-               options: cint,
-               ovector: ptr cint,
-               ovecsize: cint,
-               jstack: ptr JitStack): cint
-
-# proc free_substring*(stringptr: cstring)
-
-# proc free_substring_list*(stringptr: cstringArray)
+               length: csize_t,
+               startoffset: csize_t,
+               options: uint32,
+               ovector: ptr MatchData,
+               ovecsize: pointer # TODO: pcre2_match_context
+               ): cint
 
 proc code_free*(code: ptr Pcre)
 
@@ -615,51 +551,9 @@ proc pattern_info*(code: ptr Pcre,
                what: uint32,
                where: pointer): cint
 
-proc get_named_substring*(code: ptr Pcre,
-                          subject: cstring,
-                          ovector: ptr cint,
-                          stringcount: cint,
-                          stringname: cstring,
-                          stringptr: cstringArray): cint
-
-proc get_stringnumber*(code: ptr Pcre,
-                       name: cstring): cint
-
-proc get_stringtable_entries*(code: ptr Pcre,
-                              name: cstring,
-                              first: cstringArray,
-                              last: cstringArray): cint
-
-proc get_substring*(subject: cstring,
-                    ovector: ptr cint,
-                    stringcount: cint,
-                    stringnumber: cint,
-                    stringptr: cstringArray): cint
-
-proc get_substring_list*(subject: cstring,
-                         ovector: ptr cint,
-                         stringcount: cint,
-                         listptr: ptr cstringArray): cint
-
-proc maketables*(): pointer
-
-proc refcount*(code: ptr Pcre,
-               adjust: cint): cint
-
-proc version*(): cstring
-
 # JIT compiler related functions.
 
-# proc jit_stack_alloc*(startsize: cint,
-#                       maxsize: cint): ptr JitStack
-
-# proc jit_stack_free*(stack: ptr JitStack)
-
-# proc assign_jit_stack*(extra: ptr ExtraData,
-#                        callback: JitCallback,
-#                        data: pointer)
-
-proc jit_free_unused_memory*()
+proc jit_compile*(code: ptr Pcre, options: uint32): cint
 
 
 {.pop.}

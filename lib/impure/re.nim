@@ -1,7 +1,7 @@
 #
 #
 #            Nim's Runtime Library
-#        (c) Copyright 2012 Andreas Rumpf
+#        (c) Copyright 2024 Andreas Rumpf
 #
 #    See the file "copying.txt", included in this
 #    distribution, for details about the copyright.
@@ -114,15 +114,11 @@ proc re*(s: string, flags = {reStudy}): Regex =
   if reIgnoreCase in flags:
     options = options or CASELESS
   result.h = rawCompile(s, cast[csize_t](ZERO_TERMINATED), options)
-  # if reStudy in flags:
-  #   var msg: cstring = ""
-  #   var options: cint = 0
-  #   var hasJit: cint = 0
-  #   if pcre2.config(pcre2.CONFIG_JIT, addr hasJit) == 0:
-  #     if hasJit == 1'i32:
-  #       options = pcre.STUDY_JIT_COMPILE
-  #   result.e = pcre.study(result.h, options, addr msg)
-  #   if not isNil(msg): raiseInvalidRegex($msg)
+  if reStudy in flags: # TODO: add reJit
+    var hasJit: cint = 0
+    if pcre2.config(pcre2.CONFIG_JIT, addr hasJit) == 0:
+      if hasJit == 1'i32 and jit_compile(result.h, pcre2.JIT_COMPLETE) != 0:
+        raiseInvalidRegex("JIT compilation failed.")
 
 proc rex*(s: string, flags = {reStudy, reExtended}): Regex =
   ## Constructor for extended regular expressions.

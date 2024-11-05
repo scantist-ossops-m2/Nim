@@ -1,6 +1,6 @@
 #
 #            Nim's Runtime Library
-#        (c) Copyright 2015 Nim Contributors
+#        (c) Copyright 2024 Nim Contributors
 #
 #    See the file "copying.txt", included in this
 #    distribution, for details about the copyright.
