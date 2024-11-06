@@ -998,9 +998,9 @@ func toHex*[T: SomeInteger](x: T, len: Positive): string =
     doAssert b.toHex(4) == "1001"
     doAssert toHex(62, 3) == "03E"
     doAssert toHex(-8, 6) == "FFFFF8"
-  whenJsNoBigInt64:
+  when jsNoBigInt64:
     toHexImpl(cast[BiggestUInt](x), len, x < 0)
-  do:
+  else:
     when T is SomeSignedInt:
       toHexImpl(cast[BiggestUInt](BiggestInt(x)), len, x < 0)
     else:
@@ -1011,9 +1011,9 @@ func toHex*[T: SomeInteger](x: T): string =
   runnableExamples:
     doAssert toHex(1984'i64) == "00000000000007C0"
     doAssert toHex(1984'i16) == "07C0"
-  whenJsNoBigInt64:
+  when jsNoBigInt64:
     toHexImpl(cast[BiggestUInt](x), 2*sizeof(T), x < 0)
-  do:
+  else:
     when T is SomeSignedInt:
       toHexImpl(cast[BiggestUInt](BiggestInt(x)), 2*sizeof(T), x < 0)
     else:
@@ -1307,7 +1307,7 @@ func parseEnum*[T: enum](s: string): T =
   ## type contains multiple fields with the same string value.
   ##
   ## Raises `ValueError` for an invalid value in `s`. The comparison is
-  ## done in a style insensitive way.
+  ## done in a style insensitive way (first letter is still case-sensitive).
   runnableExamples:
     type
       MyEnum = enum
@@ -1327,7 +1327,7 @@ func parseEnum*[T: enum](s: string, default: T): T =
   ## type contains multiple fields with the same string value.
   ##
   ## Uses `default` for an invalid value in `s`. The comparison is done in a
-  ## style insensitive way.
+  ## style insensitive way (first letter is still case-sensitive).
   runnableExamples:
     type
       MyEnum = enum

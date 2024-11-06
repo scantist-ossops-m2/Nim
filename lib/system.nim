@@ -125,18 +125,38 @@ proc unsafeAddr*[T](x: T): ptr T {.magic: "Addr", noSideEffect.} =
 
 const ThisIsSystem = true
 
-proc new*[T](a: var ref T, finalizer: proc (x: ref T) {.nimcall.}) {.
-  magic: "NewFinalize", noSideEffect.}
-  ## Creates a new object of type `T` and returns a safe (traced)
-  ## reference to it in `a`.
-  ##
-  ## When the garbage collector frees the object, `finalizer` is called.
-  ## The `finalizer` may not keep a reference to the
-  ## object pointed to by `x`. The `finalizer` cannot prevent the GC from
-  ## freeing the object.
-  ##
-  ## **Note**: The `finalizer` refers to the type `T`, not to the object!
-  ## This means that for each object of type `T` the finalizer will be called!
+const arcLikeMem = defined(gcArc) or defined(gcAtomicArc) or defined(gcOrc)
+
+when defined(nimAllowNonVarDestructor) and arcLikeMem:
+  proc new*[T](a: var ref T, finalizer: proc (x: T) {.nimcall.}) {.
+    magic: "NewFinalize", noSideEffect.}
+    ## Creates a new object of type `T` and returns a safe (traced)
+    ## reference to it in `a`.
+    ##
+    ## When the garbage collector frees the object, `finalizer` is called.
+    ## The `finalizer` may not keep a reference to the
+    ## object pointed to by `x`. The `finalizer` cannot prevent the GC from
+    ## freeing the object.
+    ##
+    ## **Note**: The `finalizer` refers to the type `T`, not to the object!
+    ## This means that for each object of type `T` the finalizer will be called!
+
+  proc new*[T](a: var ref T, finalizer: proc (x: ref T) {.nimcall.}) {.
+    magic: "NewFinalize", noSideEffect, deprecated: "pass a finalizer of the 'proc (x: T) {.nimcall.}' type".}
+
+else:
+  proc new*[T](a: var ref T, finalizer: proc (x: ref T) {.nimcall.}) {.
+    magic: "NewFinalize", noSideEffect.}
+    ## Creates a new object of type `T` and returns a safe (traced)
+    ## reference to it in `a`.
+    ##
+    ## When the garbage collector frees the object, `finalizer` is called.
+    ## The `finalizer` may not keep a reference to the
+    ## object pointed to by `x`. The `finalizer` cannot prevent the GC from
+    ## freeing the object.
+    ##
+    ## **Note**: The `finalizer` refers to the type `T`, not to the object!
+    ## This means that for each object of type `T` the finalizer will be called!
 
 proc `=wasMoved`*[T](obj: var T) {.magic: "WasMoved", noSideEffect.} =
   ## Generic `wasMoved`:idx: implementation that can be overridden.
@@ -361,8 +381,6 @@ proc arrGet[I: Ordinal;T](a: T; i: I): T {.
   noSideEffect, magic: "ArrGet".}
 proc arrPut[I: Ordinal;T,S](a: T; i: I;
   x: S) {.noSideEffect, magic: "ArrPut".}
-
-const arcLikeMem = defined(gcArc) or defined(gcAtomicArc) or defined(gcOrc)
 
 
 when defined(nimAllowNonVarDestructor) and arcLikeMem and defined(nimPreviewNonVarDestructor):
@@ -2085,7 +2103,8 @@ when notJSnotNims:
   proc cmpMem(a, b: pointer, size: Natural): int =
     nimCmpMem(a, b, size).int
 
-when not defined(js):
+when not defined(js) or defined(nimscript):
+  # nimscript can be defined if config file for js compilation
   proc cmp(x, y: string): int =
     when nimvm:
       if x < y: result = -1
@@ -2102,12 +2121,14 @@ when not defined(js):
     proc cstringArrayToSeq*(a: cstringArray, len: Natural): seq[string] =
       ## Converts a `cstringArray` to a `seq[string]`. `a` is supposed to be
       ## of length `len`.
+      if a == nil: return @[]
       newSeq(result, len)
       for i in 0..len-1: result[i] = $a[i]
 
     proc cstringArrayToSeq*(a: cstringArray): seq[string] =
       ## Converts a `cstringArray` to a `seq[string]`. `a` is supposed to be
       ## terminated by `nil`.
+      if a == nil: return @[]
       var L = 0
       while a[L] != nil: inc(L)
       result = cstringArrayToSeq(a, L)
@@ -2348,8 +2369,14 @@ when notJSnotNims:
     `result` = `x`.ClE_0;
     """.}
 
-  proc finished*[T: iterator {.closure.}](x: T): bool {.noSideEffect, inline, magic: "Finished".} =
-    ## It can be used to determine if a first class iterator has finished.
+proc finished*[T: iterator {.closure.}](x: T): bool {.noSideEffect, inline, magic: "Finished".} =
+  ## It can be used to determine if a first class iterator has finished.
+  when defined(js):
+    # TODO: mangle `:state`
+    {.emit: """
+    `result` = (`x`.ClE_0).HEX3Astate < 0;
+    """.}
+  else:
     {.emit: """
     `result` = ((NI*) `x`.ClE_0)[1] < 0;
     """.}
@@ -2357,7 +2384,8 @@ when notJSnotNims:
 from std/private/digitsutils import addInt
 export addInt
 
-when defined(js):
+when defined(js) and not defined(nimscript):
+  # nimscript can be defined if config file for js compilation
   include "system/jssys"
   include "system/reprjs"
 
@@ -2788,6 +2816,18 @@ when not defined(js):
 
 proc toOpenArray*[T](x: seq[T]; first, last: int): openArray[T] {.
   magic: "Slice".}
+  ## Allows passing the slice of `x` from the element at `first` to the element
+  ## at `last` to `openArray[T]` parameters without copying it.
+  ##
+  ## Example:
+  ##   ```nim
+  ##   proc test(x: openArray[int]) =
+  ##     doAssert x == [1, 2, 3]
+  ##
+  ##   let s = @[0, 1, 2, 3, 4]
+  ##   s.toOpenArray(1, 3).test
+  ##   ```
+
 proc toOpenArray*[T](x: openArray[T]; first, last: int): openArray[T] {.
   magic: "Slice".}
 proc toOpenArray*[I, T](x: array[I, T]; first, last: I): openArray[T] {.

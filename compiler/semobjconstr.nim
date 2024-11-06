@@ -188,7 +188,7 @@ proc collectOrAddMissingCaseFields(c: PContext, branchNode: PNode,
           newNodeIT(nkType, constrCtx.initExpr.info, asgnType)
         )
     asgnExpr.flags.incl nfSkipFieldChecking
-    asgnExpr.typ = recTyp
+    asgnExpr.typ() = recTyp
     defaults.add newTree(nkExprColonExpr, newSymNode(sym), asgnExpr)
 
 proc collectBranchFields(c: PContext, n: PNode, discriminatorVal: PNode,
@@ -387,10 +387,13 @@ proc semConstructFields(c: PContext, n: PNode, constrCtx: var ObjConstrContext,
     if e != nil:
       result.status = initFull
     elif field.ast != nil:
-      result.status = initUnknown
-      result.defaults.add newTree(nkExprColonExpr, n, field.ast)
+      if efIgnoreDefaults notin flags:
+        result.status = initUnknown
+        result.defaults.add newTree(nkExprColonExpr, n, field.ast)
+      else:
+        result.status = initNone
     else:
-      if efWantNoDefaults notin flags: # cannot compute defaults at the typeRightPass
+      if {efWantNoDefaults, efIgnoreDefaults} * flags == {}: # cannot compute defaults at the typeRightPass
         let defaultExpr = defaultNodeField(c, n, constrCtx.checkDefault)
         if defaultExpr != nil:
           result.status = initUnknown
@@ -443,7 +446,7 @@ proc defaultConstructionError(c: PContext, t: PType, info: TLineInfo) =
     assert objType != nil
   if objType.kind == tyObject:
     var constrCtx = initConstrContext(objType, newNodeI(nkObjConstr, info))
-    let initResult = semConstructTypeAux(c, constrCtx, {efWantNoDefaults})
+    let initResult = semConstructTypeAux(c, constrCtx, {efIgnoreDefaults})
     if constrCtx.missingFields.len > 0:
       localError(c.config, info,
         "The $1 type doesn't have a default value. The following fields must be initialized: $2." % [typeToString(t), listSymbolNames(constrCtx.missingFields)])
@@ -472,7 +475,7 @@ proc semObjConstr(c: PContext, n: PNode, flags: TExprFlags; expectedType: PType 
   if t.kind == tyRef:
     t = skipTypes(t.elementType, {tyGenericInst, tyAlias, tySink, tyOwned})
     if optOwnedRefs in c.config.globalOptions:
-      result.typ = makeVarType(c, result.typ, tyOwned)
+      result.typ() = makeVarType(c, result.typ, tyOwned)
       # we have to watch out, there are also 'owned proc' types that can be used
       # multiple times as long as they don't have closures.
       result.typ.flags.incl tfHasOwned

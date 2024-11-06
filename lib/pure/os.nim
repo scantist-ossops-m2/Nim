@@ -142,7 +142,7 @@ proc quoteShellWindows*(s: string): string {.noSideEffect, rtl, extern: "nosp$1"
   ## Quote `s`, so it can be safely passed to Windows API.
   ##
   ## Based on Python's `subprocess.list2cmdline`.
-  ## See `this link <http://msdn.microsoft.com/en-us/library/17w5ykft.aspx>`_
+  ## See `this link <https://msdn.microsoft.com/en-us/library/17w5ykft.aspx>`_
   ## for more details.
   let needQuote = {' ', '\t'} in s or s.len == 0
   result = ""
@@ -692,7 +692,10 @@ proc getAppDir*(): string {.rtl, extern: "nos$1", tags: [ReadIOEffect], noWeirdT
 
 proc sleep*(milsecs: int) {.rtl, extern: "nos$1", tags: [TimeEffect], noWeirdTarget.} =
   ## Sleeps `milsecs` milliseconds.
+  ## A negative `milsecs` causes sleep to return immediately.
   when defined(windows):
+    if milsecs < 0:
+      return  # fixes #23732
     winlean.sleep(int32(milsecs))
   else:
     var a, b: Timespec
