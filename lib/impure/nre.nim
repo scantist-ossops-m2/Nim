@@ -61,7 +61,7 @@ runnableExamples:
   assert find("uxabc", re"(?<=x|y)ab", start = 1).get.captures[-1] == "ab"
   assert find("uxabc", re"ab", start = 3).isNone
 
-from ../wrappers/pcre2 import nil
+from std/pcre2 import nil
 import nre/private/util
 import std/tables
 from std/strutils import `%`
@@ -136,8 +136,6 @@ type
     ##     are recognized only in UTF-8 mode.
     ##     —  man pcre
     ##
-    ## -  `(*JAVASCRIPT_COMPAT)` - JavaScript compatibility
-    ## -  `(*NO_STUDY)` - turn off studying; study is enabled by default
     ##
     ## For more details on the leading option groups, see the `Option
     ## Setting <https://man7.org/linux/man-pages/man3/pcresyntax.3.html#OPTION_SETTING>`_
@@ -261,7 +259,7 @@ proc getNameToNumberTable(pattern: Regex): Table[string, int] =
 
     result[name] = num
 
-proc initRegex(pattern: string, flags: csize_t, options: uint32): Regex =
+proc initRegex(pattern: string, flags: csize_t, options: uint32, noJit: bool): Regex =
   when defined(gcDestructors):
     result = Regex()
   else:
@@ -279,15 +277,11 @@ proc initRegex(pattern: string, flags: csize_t, options: uint32): Regex =
     # failed to compile
     raise SyntaxError(msg: $errorCode, pos: int errOffset, pattern: pattern)
 
-  # if study:
-  #   var options: cint = 0
-  #   var hasJit: cint
-  #   if pcre2.config(pcre.CONFIG_JIT, addr hasJit) == 0:
-  #     if hasJit == 1'i32:
-  #       options = pcre2.STUDY_JIT_COMPILE
-  #   result.pcreExtra = pcre.study(result.pcreObj, options, addr errorMsg)
-  #   if errorMsg != nil:
-  #     raise StudyError(msg: $errorMsg)
+  if not noJit:
+    var hasJit: cint = cint(0)
+    if pcre2.config(pcre2.CONFIG_JIT, addr hasJit) == 0:
+      if hasJit == 1'i32 and pcre2.jit_compile(result.pcreObj, pcre2.JIT_COMPLETE) != 0:
+        raise StudyError(msg: "JIT compilation failed.")
 
   result.captureNameToId = result.getNameToNumberTable()
 
@@ -438,9 +432,9 @@ const PcreOptions = {
   "DOLLAR_ENDONLY": pcre2.DOLLAR_ENDONLY,
   "FIRSTLINE": pcre2.FIRSTLINE,
   "NO_AUTO_CAPTURE": pcre2.NO_AUTO_CAPTURE,
-  # "JAVASCRIPT_COMPAT": pcre2.JAVASCRIPT_COMPAT,
   "U": pcre2.UTF or pcre2.UCP # TODO: UTF-8 ?
 }.toTable
+# TODO: maybe add JIT?
 
 # Options that are supported inside regular expressions themselves
 const SkipOptions = [
@@ -449,8 +443,8 @@ const SkipOptions = [
   "CR", "LF", "CRLF", "ANYCRLF", "ANY", "BSR_ANYCRLF", "BSR_UNICODE"
 ]
 
-proc extractOptions(pattern: string): tuple[pattern: string, options: uint32] =
-  result = ("", 0'u32)
+proc extractOptions(pattern: string): tuple[pattern: string, options: uint32, noJit: bool] =
+  result = ("", 0'u32, false)
 
   var optionStart = 0
   var equals = false
@@ -470,8 +464,8 @@ proc extractOptions(pattern: string): tuple[pattern: string, options: uint32] =
         result.pattern.add pattern[optionStart .. i]
       elif PcreOptions.hasKey name:
         result.options = result.options or PcreOptions[name]
-      # elif name == "NO_STUDY":
-      #   result.study = false
+      elif name == "NO_STUDY":
+        result.noJit = true
       else:
         break
       optionStart = i+1
@@ -488,8 +482,8 @@ proc extractOptions(pattern: string): tuple[pattern: string, options: uint32] =
   result.pattern.add pattern[optionStart .. pattern.high]
 
 proc re*(pattern: string): Regex =
-  let (pattern, options) = extractOptions(pattern)
-  initRegex(pattern, pcre2.ZERO_TERMINATED, options)
+  let (pattern, options, noJit) = extractOptions(pattern)
+  initRegex(pattern, pcre2.ZERO_TERMINATED, options, noJit)
 
 proc matchImpl(str: string, pattern: Regex, start, endpos: int, options: uint32): Option[RegexMatch] =
   var myResult = RegexMatch(pattern: pattern, str: str)
@@ -517,12 +511,7 @@ proc matchImpl(str: string, pattern: Regex, start, endpos: int, options: uint32)
   let ovector = cast[ptr UncheckedArray[csize_t]](pcre2.get_ovector_pointer(matchData))
   let capture_count = pcre2.get_ovector_count(matchData)
   let ovector_size = 2 * capture_count.int * sizeof(csize_t)
-  # echo (myResult.pcreMatchBounds.len * 2 * sizeof(csize_t), ovector_size)
-  # echo (capture_count, ovector[0], ovector[1])
   copyMem(addr myResult.pcreMatchBounds[0], ovector, ovector_size)
-  # echo (myResult.pcreMatchBounds[0].a, myResult.pcreMatchBounds[0].b)
-
-  # echo " -> ", myResult
   if execRet >= 0:
     return some(myResult)
 

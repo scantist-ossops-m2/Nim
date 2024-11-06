@@ -38,7 +38,7 @@ runnableExamples:
 import
   std/[strutils, rtarrays]
 
-import ../wrappers/pcre2
+import std/pcre2
 
 when defined(nimPreviewSlimSystem):
   import std/syncio
@@ -115,7 +115,7 @@ proc re*(s: string, flags = {reStudy}): Regex =
     options = options or CASELESS
   result.h = rawCompile(s, cast[csize_t](ZERO_TERMINATED), options)
   if reStudy in flags: # TODO: add reJit
-    var hasJit: cint = 0
+    var hasJit: cint = cint(0)
     if pcre2.config(pcre2.CONFIG_JIT, addr hasJit) == 0:
       if hasJit == 1'i32 and jit_compile(result.h, pcre2.JIT_COMPLETE) != 0:
         raiseInvalidRegex("JIT compilation failed.")
