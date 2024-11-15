@@ -85,6 +85,9 @@ type
     inheritancePenalty: int
     firstMismatch*: MismatchInfo # mismatch info for better error messages
     diagnosticsEnabled*: bool
+    newlyTypedOperands*: seq[int]
+      ## indexes of arguments that are newly typechecked in this match
+      ## used for type bound op additions
 
   TTypeRelFlag* = enum
     trDontBind
@@ -639,12 +642,22 @@ proc genericParamPut(c: var TCandidate; last, fGenericOrigin: PType) =
       if x == nil:
         put(c, fGenericOrigin[i], last[i])
 
+proc isGenericObjectOf(f, a: PType): bool =
+  ## checks if `f` is an unparametrized generic type
+  ## that `a` is an instance of
+  if not (f.sym != nil and f.sym.typ.kind == tyGenericBody):
+    # covers the case where `f` is the last child (body) of the `tyGenericBody`
+    return false
+  let aRoot = genericRoot(a)
+  # use sym equality to check if the `tyGenericBody` types are equal
+  result = aRoot != nil and f.sym == aRoot.sym
+
 proc isObjectSubtype(c: var TCandidate; a, f, fGenericOrigin: PType): int =
   var t = a
   assert t.kind == tyObject
   var depth = 0
   var last = a
-  while t != nil and not sameObjectTypes(f, t):
+  while t != nil and not (sameObjectTypes(f, t) or isGenericObjectOf(f, t)):
     if t.kind != tyObject:  # avoid entering generic params etc
       return -1
     t = t.baseClass
@@ -2728,7 +2741,7 @@ proc setSon(father: PNode, at: int, son: PNode) =
   #  father[i] = newNodeIT(nkEmpty, son.info, getSysType(tyVoid))
 
 # we are allowed to modify the calling node in the 'prepare*' procs:
-proc prepareOperand(c: PContext; formal: PType; a: PNode): PNode =
+proc prepareOperand(c: PContext; formal: PType; a: PNode, newlyTyped: var bool): PNode =
   if formal.kind == tyUntyped and formal.len != 1:
     # {tyTypeDesc, tyUntyped, tyTyped, tyError}:
     # a.typ == nil is valid
@@ -2746,15 +2759,17 @@ proc prepareOperand(c: PContext; formal: PType; a: PNode): PNode =
                   #elif formal.kind == tyTyped: {efDetermineType, efWantStmt}
                   #else: {efDetermineType}
       result = c.semOperand(c, a, flags)
+    newlyTyped = true
   else:
     result = a
     considerGenSyms(c, result)
     if result.kind != nkHiddenDeref and result.typ.kind in {tyVar, tyLent} and c.matchedConcept == nil:
       result = newDeref(result)
 
-proc prepareOperand(c: PContext; a: PNode): PNode =
+proc prepareOperand(c: PContext; a: PNode, newlyTyped: var bool): PNode =
   if a.typ.isNil:
     result = c.semOperand(c, a, {efDetermineType})
+    newlyTyped = true
   else:
     result = a
     considerGenSyms(c, result)
@@ -2880,7 +2895,9 @@ proc matchesAux(c: PContext, n, nOrig: PNode, m: var TCandidate, marker: var Int
         noMatch()
       m.baseTypeMatch = false
       m.typedescMatched = false
-      n[a][1] = prepareOperand(c, formal.typ, n[a][1])
+      var newlyTyped = false
+      n[a][1] = prepareOperand(c, formal.typ, n[a][1], newlyTyped)
+      if newlyTyped: m.newlyTypedOperands.add(a)
       n[a].typ() = n[a][1].typ
       arg = paramTypesMatch(m, formal.typ, n[a].typ,
                                 n[a][1], n[a][1])
@@ -2904,7 +2921,9 @@ proc matchesAux(c: PContext, n, nOrig: PNode, m: var TCandidate, marker: var Int
         if tfVarargs in m.callee.flags:
           # is ok... but don't increment any counters...
           # we have no formal here to snoop at:
-          n[a] = prepareOperand(c, n[a])
+          var newlyTyped = false
+          n[a] = prepareOperand(c, n[a], newlyTyped)
+          if newlyTyped: m.newlyTypedOperands.add(a)
           if skipTypes(n[a].typ, abstractVar-{tyTypeDesc}).kind==tyString:
             m.call.add implicitConv(nkHiddenStdConv,
                   getSysType(c.graph, n[a].info, tyCstring),
@@ -2918,7 +2937,9 @@ proc matchesAux(c: PContext, n, nOrig: PNode, m: var TCandidate, marker: var Int
           m.baseTypeMatch = false
           m.typedescMatched = false
           incl(marker, formal.position)
-          n[a] = prepareOperand(c, formal.typ, n[a])
+          var newlyTyped = false
+          n[a] = prepareOperand(c, formal.typ, n[a], newlyTyped)
+          if newlyTyped: m.newlyTypedOperands.add(a)
           arg = paramTypesMatch(m, formal.typ, n[a].typ,
                                     n[a], nOrig[a])
           if arg != nil and m.baseTypeMatch and container != nil:
@@ -2954,7 +2975,9 @@ proc matchesAux(c: PContext, n, nOrig: PNode, m: var TCandidate, marker: var Int
         else:
           m.baseTypeMatch = false
           m.typedescMatched = false
-          n[a] = prepareOperand(c, formal.typ, n[a])
+          var newlyTyped = false
+          n[a] = prepareOperand(c, formal.typ, n[a], newlyTyped)
+          if newlyTyped: m.newlyTypedOperands.add(a)
           arg = paramTypesMatch(m, formal.typ, n[a].typ,
                                     n[a], nOrig[a])
           if arg == nil:

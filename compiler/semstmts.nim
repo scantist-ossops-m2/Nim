@@ -2092,7 +2092,7 @@ proc bindDupHook(c: PContext; s: PSym; n: PNode; op: TTypeAttachedOp) =
   incl(s.flags, sfUsed)
   incl(s.flags, sfOverridden)
 
-proc bindTypeHook(c: PContext; s: PSym; n: PNode; op: TTypeAttachedOp; suppressVarDestructorWarning = false) =
+proc bindTypeHook(c: PContext; s: PSym; n: PNode; op: TTypeAttachedOp) =
   let t = s.typ
   var noError = false
   let cond = case op
@@ -2116,7 +2116,7 @@ proc bindTypeHook(c: PContext; s: PSym; n: PNode; op: TTypeAttachedOp; suppressV
       elif obj.kind == tyGenericInvocation: obj = obj.genericHead
       else: break
     if obj.kind in {tyObject, tyDistinct, tySequence, tyString}:
-      if (not suppressVarDestructorWarning) and op == attachedDestructor and t.firstParamType.kind == tyVar and
+      if op == attachedDestructor and t.firstParamType.kind == tyVar and
           c.config.selectedGC in {gcArc, gcAtomicArc, gcOrc}:
         message(c.config, n.info, warnDeprecated, "A custom '=destroy' hook which takes a 'var T' parameter is deprecated; it should take a 'T' parameter")
       obj = canonType(c, obj)
@@ -2359,6 +2359,7 @@ proc semProcAux(c: PContext, n: PNode, kind: TSymKind,
   of nkEmpty:
     s = newSym(kind, c.cache.idAnon, c.idgen, c.getCurrOwner, n.info)
     s.flags.incl sfUsed
+    s.flags.incl sfGenSym
     n[namePos] = newSymNode(s)
   of nkSym:
     s = n[namePos].sym
