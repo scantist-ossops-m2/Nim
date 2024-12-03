@@ -1,6 +1,3 @@
-# XXX make complex ones like bitOr use builder instead
-# XXX add stuff like NI, NIM_NIL as constants
-
 proc constType(t: Snippet): Snippet =
   # needs manipulation of `t` in nifc
   "NIM_CONST " & t
@@ -70,7 +67,7 @@ template addCast(builder: var Builder, typ: Snippet, valueBody: typed) =
   builder.add ")"
 
 proc cAddr(value: Snippet): Snippet =
-  "&" & value
+  "(&" & value & ")"
 
 proc cLabelAddr(value: TLabel): Snippet =
   "&&" & value
@@ -86,9 +83,6 @@ proc dotField(a, b: Snippet): Snippet =
 
 proc derefField(a, b: Snippet): Snippet =
   a & "->" & b
-
-proc bitOr(a, b: Snippet): Snippet =
-  "(" & a & " | " & b & ")"
 
 type CallBuilder = object
   needsComma: bool

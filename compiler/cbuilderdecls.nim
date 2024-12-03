@@ -271,7 +271,7 @@ proc startSimpleStruct(obj: var Builder; m: BModule; name: string; baseType: Sni
 proc finishSimpleStruct(obj: var Builder; m: BModule; info: StructBuilderInfo) =
   if info.baseKind == bcNone and info.preFieldsLen == obj.buf.len:
     # no fields were added, add dummy field
-    obj.addField(name = "dummy", typ = "char")
+    obj.addField(name = "dummy", typ = CChar)
   if info.named:
     obj.add("};\n")
   else:
@@ -330,7 +330,7 @@ proc startStruct(obj: var Builder; m: BModule; t: PType; name: string; baseType:
         t.n != nil and t.n.len == 1 and t.n[0].kind == nkSym and
         t.n[0].sym.typ.skipTypes(abstractInst).kind == tyUncheckedArray:
       # only consists of flexible array field, add *initial* dummy field
-      obj.addField(name = "dummy", typ = "char")
+      obj.addField(name = "dummy", typ = CChar)
   of bcCppInherit: discard
   of bcNoneRtti:
     obj.addField(name = "m_type", typ = ptrType(cgsymValue(m, "TNimType")))
@@ -343,7 +343,7 @@ proc finishStruct(obj: var Builder; m: BModule; t: PType; info: StructBuilderInf
   if info.baseKind == bcNone and info.preFieldsLen == obj.buf.len and
       t.itemId notin m.g.graph.memberProcsPerType:
     # no fields were added, add dummy field
-    obj.addField(name = "dummy", typ = "char")
+    obj.addField(name = "dummy", typ = CChar)
   if info.named:
     obj.add("};\n")
   else:
@@ -373,7 +373,7 @@ template addFieldWithStructType(obj: var Builder; m: BModule; parentTyp: PType; 
   obj.add(fieldName)
   obj.add(";\n")
   if tfPacked in parentTyp.flags and hasAttribute notin CC[m.config.cCompiler].props:
-    result.add("#pragma pack(pop)\n")
+    obj.add("#pragma pack(pop)\n")
 
 template addAnonUnion(obj: var Builder; body: typed) =
   ## adds an anonymous union i.e. `union { ... };` with fields according to `body`
@@ -404,7 +404,7 @@ proc addVisibilityPrefix(builder: var Builder, visibility: DeclVisibility) =
   of Extern:
     builder.add("extern ")
   of ExternC:
-    builder.add("extern \"C\" ")
+    builder.add("NIM_EXTERNC ")
   of ImportLib:
     builder.add("N_LIB_IMPORT ")
   of ExportLib:
